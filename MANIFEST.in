@@ -1,0 +1,3 @@
+include edgetpuvision/streaming/assets/*
+include edgetpuvision/streaming/assets/broadway/*
+include README.md
