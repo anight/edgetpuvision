@@ -8,7 +8,14 @@ Homepage: https://aiyprojects.withgoogle.com/
 
 Package: python3-edgetpuvision
 Architecture: all
-Depends: ${misc:Depends}, ${python3:Depends}, python3-numpy, python3-protobuf, python3-pil, python3-gi, python3-gst-1.0, edgetpu-api
+Depends: ${misc:Depends},
+         ${python3:Depends},
+         python3-numpy,
+         python3-protobuf,
+         python3-pil,
+         python3-gi,
+         python3-gst-1.0,
+         python3-edgetpu
 Description: EdgeTPU camera API
  API to run inference on image data coming from the camera.
 
