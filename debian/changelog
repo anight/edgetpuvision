@@ -1,3 +1,15 @@
+edgetpuvision (1.1-1) mendel-beaker; urgency=medium
+
+  * Better gstreamer pipelines
+  * Inference on image files
+  * Streaming from .mp4 file
+  * Streaming from any v4l2 source
+  * Switching between .tflite models in runtime
+  * tpudemo script
+  * Simplified API based on python generators
+
+ -- AIY Projects <support-aiyprojects@google.com>  Thu, 24 Jan 2019 14:27:56 -0800
+
 edgetpuvision (1.0-1) unstable; urgency=low
 
   * Initial release.
