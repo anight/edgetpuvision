@@ -12,13 +12,48 @@
 #   --labels=${TEST_DATA}/coco_labels.txt
 
 import argparse
+import itertools
 import time
 
 from edgetpu.detection.engine import DetectionEngine
 
 from . import gstreamer
 from . import overlays
-from .utils import load_labels
+from .utils import load_labels, input_image_size, same_input_image_sizes
+
+def render_gen(args):
+    engines = [DetectionEngine(m) for m in args.model.split(',')]
+    assert same_input_image_sizes(engines)
+    engines = itertools.cycle(engines)
+    engine = next(engines)
+
+    labels = load_labels(args.labels) if args.labels else None
+    filtered_labels = set(l.strip() for l in args.filter.split(',')) if args.filter else None
+    draw_overlay = True
+
+    yield input_image_size(engine)
+
+    output = None
+    while True:
+        tensor, size, window, inference_rate, command = (yield output)
+
+        if draw_overlay:
+            start = time.monotonic()
+            objs = engine.DetectWithInputTensor(tensor, threshold=args.threshold, top_k=args.top_k)
+            inference_time  = time.monotonic() - start
+
+            if labels and filtered_labels:
+                objs = [obj for obj in objs if labels[obj.label_id] in filtered_labels]
+
+            output = overlays.detection(objs, labels, inference_time, inference_rate, size, window)
+        else:
+            output = None
+
+        if command == 'o':
+            draw_overlay = not draw_overlay
+        elif command == 'n':
+            engine = next(engines)
+
 
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -40,25 +75,10 @@ def main():
                         help='Fullscreen rendering.')
     args = parser.parse_args()
 
-    engine = DetectionEngine(args.model)
-    labels = load_labels(args.labels) if args.labels else None
-    filtered_labels = set(x.strip() for x in args.filter.split(',')) if args.filter else None
-
-    def render_overlay(rgb, size, view_box, inference_fps):
-        start = time.monotonic()
-        objs = engine.DetectWithInputTensor(rgb, threshold=args.threshold, top_k=args.top_k)
-        inference_time  = time.monotonic() - start
-        if labels and filtered_labels:
-            objs = [obj for obj in objs if labels[obj.label_id] in filtered_labels]
-
-        return overlays.detection(objs, inference_time, inference_fps, labels, size, view_box)
-
-    _, h, w, _ = engine.get_input_tensor_shape()
-
-    if not gstreamer.run((w, h), render_overlay,
-                         source=args.source,
-                         downscale=args.downscale,
-                         fullscreen=args.fullscreen):
+    if not gstreamer.run_gen(render_gen(args),
+                          source=args.source,
+                          downscale=args.downscale,
+                          fullscreen=args.fullscreen):
         print('Invalid source argument:', args.source)
 
 

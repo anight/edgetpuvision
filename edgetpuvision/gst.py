@@ -1,19 +1,33 @@
 import collections
 import itertools
+import re
 
 __all__ = ('Filter', 'Queue', 'Caps', 'Tee',
-           'Size', 'Fraction',
-           'describe', 'max_inner_size', 'min_outer_size', 'center_inside')
+           'Size', 'Fraction', 'Format',
+           'describe', 'max_inner_size', 'min_outer_size', 'center_inside', 'parse_format')
 
-Fraction = collections.namedtuple('Fraction', ['num', 'den'])
+Fraction = collections.namedtuple('Fraction', ('num', 'den'))
 Fraction.__str__ = lambda self: '%s/%s' % (self.num, self.den)
 
-Size = collections.namedtuple('Size', ['width', 'height'])
+Size = collections.namedtuple('Size', ('width', 'height'))
 Size.__mul__ = lambda self, arg: Size(int(arg * self.width), int(arg * self.height))
 Size.__rmul__ = lambda self, arg: Size(int(arg * self.width), int(arg * self.height))
 Size.__floordiv__ = lambda self, arg: Size(self.width // arg, self.height // arg)
 Size.__truediv__ = lambda self, arg: Size(int(self.width / arg), int(self.height / arg))
 Size.__str__ = lambda self: '%dx%d' % self
+
+Format = collections.namedtuple('Format', ('device', 'pixel', 'size', 'framerate'))
+
+V4L2_DEVICE = re.compile(r'(?P<dev>[^:]+):(?P<fmt>[^:]+):(?P<w>\d+)x(?P<h>\d+):(?P<num>\d+)/(?P<den>\d+)')
+
+def parse_format(src):
+    match = V4L2_DEVICE.search(src)
+    if match:
+        return Format(device=match.group('dev'),
+                      pixel=match.group('fmt'),
+                      size=Size(int(match.group('w')), int(match.group('h'))),
+                      framerate=Fraction(int(match.group('num')), int(match.group('den'))))
+    return None
 
 def max_inner_size(what, where):
     # Example: what=(800, 600) where=(300, 300) => (300, 225)
@@ -52,10 +66,10 @@ class Element:
         return self.params[name]
 
 class Filter(Element):
-    def __init__(self, filtername, pins=None, **params):
+    def __init__(self, filtername, pads=None, **params):
         super().__init__(params)
         self.filtername = filtername
-        self.pins = pins
+        self.pads = pads
 
     def __str__(self):
         return join(self.filtername, ' ', self.params)
@@ -76,9 +90,9 @@ class Caps(Element):
         return join(self.mediatype, ',', self.params, ',')
 
 class Tee(Element):
-    def __init__(self, pins=None, **params):
+    def __init__(self, pads=None, **params):
         super().__init__(params)
-        self.pins = pins
+        self.pads = pads
         self.params = params
 
     def __str__(self):
@@ -93,13 +107,13 @@ def describe0(arg, name_gens, depth):
     elif isinstance(arg, Tee):
         params = params_with_name(arg.params, 't', name_gens)
         return join('tee', ' ', params) + '\n' + \
-             '\n'.join('%s%s. ! %s' % (indent, params['name'], recur(x)) for x in arg.pins)
+             '\n'.join('%s%s. ! %s' % (indent, params['name'], recur(x)) for x in arg.pads)
     elif isinstance(arg, Filter):
         body = join(arg.filtername, ' ', arg.params)
-        if arg.pins:
+        if arg.pads:
             params = params_with_name(arg.params, 'f', name_gens)
             return body + '\n' + \
-              '\n'.join('%s%s.%s ! %s' % (indent, params['name'], pin_name, recur(x)) for pin_name, x in arg.pins.items())
+              '\n'.join('%s%s.%s ! %s' % (indent, params['name'], pad_name, recur(x)) for pad_name, x in arg.pads.items())
         return body
     elif isinstance(arg, Queue):
         return join('queue', ' ', arg.params)

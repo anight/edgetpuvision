@@ -8,13 +8,14 @@
 
 import argparse
 import collections
+import itertools
 import time
 
 from edgetpu.classification.engine import ClassificationEngine
 
 from . import gstreamer
 from . import overlays
-from .utils import load_labels
+from .utils import load_labels, input_image_size, same_input_image_sizes
 
 
 def top_results(window, top_k):
@@ -30,6 +31,44 @@ def accumulator(size, top_k):
     window.append((yield []))
     while True:
         window.append((yield top_results(window, top_k)))
+
+
+def render_gen(args):
+    acc = accumulator(size=args.window, top_k=args.top_k)
+    acc.send(None)  # Initialize.
+
+    engines = [ClassificationEngine(m) for m in args.model.split(',')]
+    assert same_input_image_sizes(engines)
+    engines = itertools.cycle(engines)
+    engine = next(engines)
+
+    labels = load_labels(args.labels)
+    draw_overlay = True
+
+    yield input_image_size(engine)
+
+    output = None
+    while True:
+        tensor, size, window, inference_rate, command = (yield output)
+
+        if draw_overlay:
+            start = time.monotonic()
+            results = engine.ClassifyWithInputTensor(tensor, threshold=args.threshold, top_k=args.top_k)
+            inference_time = time.monotonic() - start
+
+            results = [(labels[i], score) for i, score in results]
+            results = acc.send(results)
+            if args.print:
+                print(results)
+
+            output = overlays.classification(results, inference_time, inference_rate, size, window)
+        else:
+            output = None
+
+        if command == 'o':
+            draw_overlay = not draw_overlay
+        elif command == 'n':
+            engine = next(engines)
 
 
 def main():
@@ -55,27 +94,7 @@ def main():
                         help='Fullscreen rendering.')
     args = parser.parse_args()
 
-    engine = ClassificationEngine(args.model)
-    labels = load_labels(args.labels)
-
-    acc = accumulator(size=args.window, top_k=args.top_k)
-    acc.send(None)  # Initialize.
-
-    def render_overlay(rgb, size, view_box, inference_fps):
-        start = time.monotonic()
-        results = engine.ClassifyWithInputTensor(rgb, threshold=args.threshold, top_k=args.top_k)
-        inference_time = time.monotonic() - start
-
-        results = [(labels[i], score) for i, score in results]
-        results = acc.send(results)
-        if args.print:
-            print(results)
-
-        return overlays.classification(results, inference_time, inference_fps, size, view_box)
-
-    _, h, w, _ = engine.get_input_tensor_shape()
-
-    if not gstreamer.run((w, h), render_overlay,
+    if not gstreamer.run_gen(render_gen(args),
                          source=args.source,
                          downscale=args.downscale,
                          fullscreen=args.fullscreen):

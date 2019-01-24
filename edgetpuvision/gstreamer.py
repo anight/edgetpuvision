@@ -4,7 +4,6 @@ import fcntl
 import functools
 import os
 import queue
-import re
 import sys
 import termios
 import threading
@@ -30,6 +29,8 @@ from PIL import Image
 
 from .gst import *
 
+COMMAND_SAVE_FRAME = ' '
+COMMAND_PRINT_INFO = 'p'
 
 def set_nonblocking(fd):
     flags = fcntl.fcntl(fd, fcntl.F_GETFL)
@@ -87,15 +88,13 @@ def inference_pipeline(render_size, inference_size):
         Filter('appsink', name='appsink', emit_signals=True, max_buffers=1, drop=True, sync=False)
     )
 
-
-# TODO(dkovalev): Image as an input.
 def image_file_pipeline(filename, render_size, inference_size, fullscreen):
     size = max_inner_size(render_size, inference_size)
     return (
         Filter('filesrc', location=filename),
         Filter('decodebin'),
         Filter('imagefreeze'),
-        Tee(pins=((
+        Tee(pads=((
             Queue(max_size_buffers=1),
             Filter('videoconvert'),
             Filter('videoscale'),
@@ -113,7 +112,6 @@ def image_file_pipeline(filename, render_size, inference_size, fullscreen):
         )))
     )
 
-
 def video_file_pipeline(filename, render_size, inference_size, fullscreen):
     return (
         Filter('filesrc', location=filename),
@@ -121,31 +119,31 @@ def video_file_pipeline(filename, render_size, inference_size, fullscreen):
         Filter('h264parse'),
         Filter('vpudec'),
         Filter('glupload'),
-        Tee(pins=((
+        Tee(pads=((
             Queue(max_size_buffers=1),
             Filter('glfilterbin', filter='glcolorscale'),
             Filter('rsvgoverlay', name='overlay'),
             Caps('video/x-raw', width=render_size.width, height=render_size.height),
             sink(fullscreen),
         ),(
-            Queue(max_size_buffers=1),
+            Queue(max_size_buffers=1, leaky='downstream'),
             inference_pipeline(render_size, inference_size),
         )))
     )
 
 # v4l2-ctl --list-formats-ext --device /dev/video1
-def v4l2_camera(device, fmt, size, framerate):
+def v4l2_camera(fmt):
     return (
-        Filter('v4l2src', device=device),
-        Caps('video/x-raw', format=fmt, width=size.width, height=size.height,
-             framerate='%d/%d' % framerate),
+        Filter('v4l2src', device=fmt.device),
+        Caps('video/x-raw', format=fmt.pixel, width=fmt.size.width, height=fmt.size.height,
+             framerate='%d/%d' % fmt.framerate),
     )
 
 def video_camera_pipeline(render_size, inference_size, fullscreen):
     return (
         # TODO(dkovalev): Queue(max_size_buffers=1, leaky='downstream'),
         Filter('glupload'),
-        Tee(pins=((
+        Tee(pads=((
             Queue(max_size_buffers=1, leaky='downstream'),
             Filter('glfilterbin', filter='glcolorscale'),
             Filter('rsvgoverlay', name='overlay'),
@@ -156,9 +154,56 @@ def video_camera_pipeline(render_size, inference_size, fullscreen):
         )))
     )
 
-class Command:
-    SAVE_FRAME = 'save_frame'
-    PRINT_INFO = 'print_info'
+def h264sink(display_decoded=False):
+    appsink = Filter('appsink', name='h264sink', emit_signals=True, max_buffers=1, drop=False, sync=False),
+
+    if display_decoded:
+        return Tee(pads=(
+                   (Queue(), appsink),
+                   (Queue(), Filter('vpudec'), Filter('kmssink', sync=False))
+               ))
+
+    return appsink
+
+def file_streaming_pipeline(filename, render_size, inference_size):
+    return (
+        Filter('filesrc', location=filename),
+        Filter('qtdemux'),
+        Tee(pads=((
+          Queue(max_size_buffers=1),
+          Filter('h264parse'),
+          Filter('vpudec'),
+          inference_pipeline(render_size, inference_size),
+        ), (
+          Queue(max_size_buffers=1),
+          Filter('h264parse'),
+          Caps('video/x-h264', stream_format='byte-stream', alignment='nal'),
+          h264sink()
+        )))
+    )
+
+def camera_streaming_pipeline(profile, bitrate, render_size, inference_size):
+    size = max_inner_size(render_size, inference_size)
+    return (
+        Tee(pads=((
+          Queue(),
+          inference_pipeline(render_size, inference_size)
+        ), (
+          Queue(max_size_buffers=1, leaky='downstream'),
+          Filter('videoconvert'),
+          Filter('x264enc',
+                 speed_preset='ultrafast',
+                 tune='zerolatency',
+                 threads=4,
+                 key_int_max=5,
+                 bitrate=int(bitrate / 1000),  # kbit per second.
+                 aud=False),
+          Caps('video/x-h264', profile=profile),
+          Filter('h264parse'),
+          Caps('video/x-h264', stream_format='byte-stream', alignment='nal'),
+          h264sink()
+        )))
+    )
 
 def save_frame(rgb, size, overlay=None, ext='png'):
     tag = '%010d' % int(time.monotonic() * 1000)
@@ -188,18 +233,15 @@ def caps_size(caps):
     return Size(structure.get_value('width'),
                 structure.get_value('height'))
 
-def get_video_size(uri):
+def get_video_info(filename):
     #Command line: gst-discoverer-1.0 -v ~/cars_highway.mp4
+    uri = 'file://' + filename
     discoverer = GstPbutils.Discoverer()
     info = discoverer.discover_uri(uri)
 
-    # TODO(dkovalev): Image as an input.
-    #stream_info = info.get_stream_info()
-    #return Size(stream_info.get_width(), stream_info.get_height())
-
     streams = info.get_video_streams()
     assert len(streams) == 1
-    return caps_size(streams[0].get_caps())
+    return streams[0]
 
 def loop():
     return GLib.MainLoop.new(None, False)
@@ -255,7 +297,7 @@ def run_pipeline(loop, pipeline, signals):
     pipeline.set_state(Gst.State.PLAYING)
     try:
         loop.run()
-    except KeyboardInterrupt as e:
+    except KeyboardInterrupt:
         pass
     finally:
         pipeline.set_state(Gst.State.NULL)
@@ -263,61 +305,67 @@ def run_pipeline(loop, pipeline, signals):
 
 def on_keypress(fd, flags, commands):
     for ch in sys.stdin.read():
-        if ch == ' ':
-            commands.put(Command.SAVE_FRAME)
-        elif ch == 'i':
-            commands.put(Command.PRINT_INFO)
+        commands.put(ch)
     return True
 
 def on_new_sample(sink, pipeline, render_overlay, render_size, images, commands, fps_counter):
     with pull_sample(sink) as (sample, data):
-        fps = next(fps_counter)
-        svg = render_overlay(np.frombuffer(data, dtype=np.uint8), inference_fps=fps)
-        if svg:
-            overlay = pipeline.get_by_name('overlay')
-            overlay.set_property('data', svg)
+        inference_rate = next(fps_counter)
+        custom_command = None
+        save_frame = False
 
         command = get_nowait(commands)
-        if command is Command.SAVE_FRAME:
-            images.put((data, caps_size(sample.get_caps()), svg))
-        elif command is Command.PRINT_INFO:
+        if command == COMMAND_SAVE_FRAME:
+            save_frame = True
+        elif command == COMMAND_PRINT_INFO:
             print('Timestamp: %.2f' % time.monotonic())
-            print('Inference FPS: %s' % fps)
+            print('Inference FPS: %s' % inference_rate)
             print('Render size: %d x %d' % render_size)
             print('Inference size: %d x %d' % caps_size(sample.get_caps()))
+        else:
+            custom_command = command
+
+        svg = render_overlay(np.frombuffer(data, dtype=np.uint8),
+                             inference_rate=inference_rate,
+                             command=custom_command)
+        overlay = pipeline.get_by_name('overlay')
+        overlay.set_property('data', svg)
+
+        if save_frame:
+            images.put((data, caps_size(sample.get_caps()), svg))
 
     return Gst.FlowReturn.OK
 
 
-V4L2_DEVICE = re.compile(r'(?P<dev>[^:]+):(?P<fmt>[^:]+):(?P<w>\d+)x(?P<h>\d+):(?P<num>\d+)/(?P<den>\d+)')
-
+def run_gen(render_overlay_gen, *, source, downscale, fullscreen):
+    inference_size = render_overlay_gen.send(None)  # Initialize.
+    return run(inference_size,
+        lambda tensor, size, window, inference_rate, command:
+            render_overlay_gen.send((tensor, size, window, inference_rate, command)),
+        source=source,
+        downscale=downscale,
+        fullscreen=fullscreen)
 
 def run(inference_size, render_overlay, *, source, downscale, fullscreen):
-    match = V4L2_DEVICE.search(source)
-    if match:
-        run_camera(inference_size, render_overlay,
-                   device=match.group('dev'),
-                   fmt=match.group('fmt'),
-                   size=(int(match.group('w')), int(match.group('h'))),
-                   framerate=(int(match.group('num')), int(match.group('den'))),
-                   fullscreen=fullscreen)
+    fmt = parse_format(source)
+    if fmt:
+        run_camera(inference_size, render_overlay, fmt, fullscreen)
         return True
-    else:
-        filename = os.path.expanduser(source)
-        if os.path.isfile(filename):
-            run_file(inference_size, render_overlay,
-                     filename=filename,
-                     downscale=downscale,
-                     fullscreen=fullscreen)
-            return True
+
+    filename = os.path.expanduser(source)
+    if os.path.isfile(filename):
+        run_file(inference_size, render_overlay,
+                 filename=filename,
+                 downscale=downscale,
+                 fullscreen=fullscreen)
+        return True
 
     return False
 
-
-def run_camera(inference_size, render_overlay, *, device, fmt, size, framerate, fullscreen):
+def run_camera(inference_size, render_overlay, fmt, fullscreen):
     inference_size = Size(*inference_size)
 
-    camera = v4l2_camera(device, fmt, Size(*size), framerate)
+    camera = v4l2_camera(fmt)
     caps = next(x for x in camera if isinstance(x, Caps))
     render_size = Size(caps.width, caps.height)
     pipeline = camera + video_camera_pipeline(render_size, inference_size, fullscreen)
@@ -327,9 +375,13 @@ def run_camera(inference_size, render_overlay, *, device, fmt, size, framerate, 
 def run_file(inference_size, render_overlay, *, filename, downscale, fullscreen):
     inference_size = Size(*inference_size)
 
-    video_size = get_video_size('file://' + filename)
-    render_size = video_size / downscale
-    pipeline = video_file_pipeline(filename, render_size, inference_size, fullscreen)
+    info = get_video_info(filename)
+    render_size = Size(info.get_width(), info.get_height()) / downscale
+    if info.is_image():
+        pipeline = image_file_pipeline(filename, render_size, inference_size, fullscreen)
+    else:
+        pipeline = video_file_pipeline(filename, render_size, inference_size, fullscreen)
+
     return run_loop(pipeline, inference_size, render_size, render_overlay)
 
 
@@ -346,13 +398,13 @@ def run_loop(pipeline, inference_size, render_size, render_overlay):
             stack.enter_context(term_raw_mode(sys.stdin.fileno()))
 
         size = min_outer_size(inference_size, render_size)
-        view_box = center_inside(render_size, size)
+        window = center_inside(render_size, size)
 
         run_pipeline(loop, pipeline, {'appsink': {'new-sample':
             functools.partial(on_new_sample,
                 render_overlay=functools.partial(render_overlay,
                     size=size,
-                    view_box=view_box),
+                    window=window),
                 render_size=render_size,
                 images=images,
                 commands=commands,

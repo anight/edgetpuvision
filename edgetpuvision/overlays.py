@@ -8,16 +8,16 @@ CSS_STYLES = str(svg.CssStyle({'.txt': svg.Style(fill='white'),
 def _normalize_rect(rect, size):
     width, height = size
     x0, y0, x1, y1 = rect
-    x, y, w, h = x0, y0, x1 - x0, y1 - y0
-    return int(x * width), int(y * height), int(w * width), int(h * height)
+    return int(x0 * width), int(y0 * height), \
+           int((x1 - x0) * width), int((y1 - y0) * height)
 
 
-def classification(results, inference_time, inference_fps, size, view_box):
-    x0, y0, _, _ = view_box
+def classification(results, inference_time, inference_rate, size, window):
+    x0, y0, _, _ = window
 
     lines = [
         'Inference time: %.2f ms (%.2f fps)' % (inference_time * 1000, 1.0 / inference_time),
-        'Inference frame rate: %.2f fps' % inference_fps
+        'Inference frame rate: %.2f fps' % inference_rate
     ]
 
     for i, (label, score) in enumerate(results):
@@ -26,31 +26,30 @@ def classification(results, inference_time, inference_fps, size, view_box):
     defs = svg.Defs()
     defs += CSS_STYLES
 
-    doc = svg.Svg(viewBox='%s %s %s %s' % view_box, font_size='26px')
+    doc = svg.Svg(viewBox='%s %s %s %s' % window, font_size='26px')
     doc += defs
     doc += svg.normal_text(lines, x=x0 + 10, y=y0 + 10, font_size_em=1.1)
     return str(doc)
 
 
-def detection(objs, inference_time, inference_fps, labels, size, view_box):
-    x0, y0, _, _ = view_box
+def detection(objs, labels, inference_time, inference_rate, size, window):
+    x0, y0, _, _ = window
 
     defs = svg.Defs()
     defs += CSS_STYLES
 
-    doc = svg.Svg(viewBox='%s %s %s %s' % view_box, font_size='26px')
+    doc = svg.Svg(viewBox='%s %s %s %s' % window, font_size='26px')
     doc += defs
     doc += svg.normal_text((
         'Inference time: %.2f ms (%.2f fps)' % (inference_time * 1000, 1.0 / inference_time),
-        'Inference frame rate: %.2f fps' % inference_fps,
+        'Inference frame rate: %.2f fps' % inference_rate,
         'Objects: %d' % len(objs),
     ), x0 + 10, y0 + 10, font_size_em=1.1)
 
     for obj in objs:
         percent = int(100 * obj.score)
         if labels:
-            label = labels[obj.label_id]
-            caption = '%d%% %s' % (percent, label)
+            caption = '%d%% %s' % (percent, labels[obj.label_id])
         else:
             caption = '%d%%' % percent
 

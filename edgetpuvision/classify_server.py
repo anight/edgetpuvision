@@ -14,15 +14,18 @@ import time
 from edgetpu.classification.engine import ClassificationEngine
 
 from . import overlays
-from .camera import InferenceCamera
+from .camera import make_camera
 from .streaming.server import StreamingServer
-from .utils import load_labels
+from .utils import load_labels, input_image_size
 
 
 def main():
     logging.basicConfig(level=logging.INFO)
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--source',
+                        help='/dev/videoN:FMT:WxH:N/D or .mp4 file',
+                        default='/dev/video0:YUY2:1280x720:30/1')
     parser.add_argument('--model', required=True,
                         help='.tflite model path.')
     parser.add_argument('--labels', required=True,
@@ -36,17 +39,17 @@ def main():
     engine = ClassificationEngine(args.model)
     labels = load_labels(args.labels)
 
-    _, h, w, _ = engine.get_input_tensor_shape()
+    camera = make_camera(args.source, input_image_size(engine))
+    assert camera is not None
 
-    camera = InferenceCamera((640, 360), (w, h))
     with StreamingServer(camera) as server:
-        def on_image(rgb, inference_fps, size, view_box):
+        def on_image(tensor, inference_fps, size, window):
             start = time.monotonic()
-            results = engine.ClassifyWithInputTensor(rgb, threshold=args.threshold, top_k=args.top_k)
+            results = engine.ClassifyWithInputTensor(tensor, threshold=args.threshold, top_k=args.top_k)
             inference_time = time.monotonic() - start
 
             results = [(labels[i], score) for i, score in results]
-            server.send_overlay(overlays.classification(results, inference_time, inference_fps, size, view_box))
+            server.send_overlay(overlays.classification(results, inference_time, inference_fps, size, window))
 
         camera.on_image = on_image
         signal.pause()
