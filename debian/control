@@ -10,12 +10,16 @@ Package: python3-edgetpuvision
 Architecture: all
 Depends: ${misc:Depends},
          ${python3:Depends},
+         gstreamer1.0-plugins-bad,
+         gstreamer1.0-plugins-good,
+         gstreamer1.0-plugins-ugly,
          python3-numpy,
          python3-protobuf,
          python3-pil,
          python3-gi,
          python3-gst-1.0,
-         python3-edgetpu
+         python3-edgetpu,
+         weston-imx
 Description: EdgeTPU camera API
  API to run inference on image data coming from the camera.
 
