@@ -10,6 +10,7 @@ Package: python3-edgetpuvision
 Architecture: all
 Depends: ${misc:Depends},
          ${python3:Depends},
+         imx-gst1.0-plugin,
          gstreamer1.0-plugins-bad,
          gstreamer1.0-plugins-good,
          gstreamer1.0-plugins-ugly,
