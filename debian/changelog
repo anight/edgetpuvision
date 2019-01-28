@@ -1,3 +1,9 @@
+edgetpuvision (1.2-1) mendel-beaker; urgency=medium
+
+  * Update command line examples and help strings.
+
+ -- AIY Projects <support-aiyprojects@google.com>  Mon, 28 Jan 2019 15:01:00 -0800
+
 edgetpuvision (1.1-1) mendel-beaker; urgency=medium
 
   * Better gstreamer pipelines
