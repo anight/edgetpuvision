@@ -1,15 +1,15 @@
 """A demo which runs object detection and streams video to the browser."""
 
-# export TEST_DATA=/usr/lib/python3.5/dist-packages/edgetpu/test_data/
+# export TEST_DATA=/usr/lib/python3/dist-packages/edgetpu/test_data
 #
 # Run face detection model:
-# python3 detect_server.py \
-#   --model=${TEST_DATA}/mobilenet_ssd_v2_face_quant_postprocess_edgetpu.tflite
+# python3 -m edgetpuvision.detect_server \
+#   --model ${TEST_DATA}/mobilenet_ssd_v2_face_quant_postprocess_edgetpu.tflite
 #
 # Run coco model:
-# python3 detect_server.py \
-#   --model=${TEST_DATA}/mobilenet_ssd_v2_coco_quant_postprocess_edgetpu.tflite
-#   --labels=${TEST_DATA}/coco_labels.txt
+# python3 -m edgetpuvision.detect_server \
+#   --model ${TEST_DATA}/mobilenet_ssd_v2_coco_quant_postprocess_edgetpu.tflite \
+#   --labels ${TEST_DATA}/coco_labels.txt
 
 import argparse
 import logging
@@ -29,16 +29,16 @@ def main():
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--source',
-                        help='/dev/videoN:FMT:WxH:N/D or .mp4 file',
+                        help='/dev/videoN:FMT:WxH:N/D or .mp4 file or image file',
                         default='/dev/video0:YUY2:1280x720:30/1')
     parser.add_argument('--model',
-                        help='.tflite model path.', required=True)
+                        help='.tflite model path', required=True)
     parser.add_argument('--labels',
-                        help='labels file path.')
+                        help='labels file path')
     parser.add_argument('--top_k', type=int, default=50,
-                        help='Max number of objects to detect.')
+                        help='Max number of objects to detect')
     parser.add_argument('--threshold', type=float, default=0.1,
-                        help='Detection threshold.')
+                        help='Detection threshold')
     parser.add_argument('--filter', default=None)
     args = parser.parse_args()
 
