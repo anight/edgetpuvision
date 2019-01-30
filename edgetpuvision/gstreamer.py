@@ -93,6 +93,8 @@ def image_file_pipeline(filename, render_size, inference_size, fullscreen):
     return (
         Filter('filesrc', location=filename),
         Filter('decodebin'),
+        Filter('videoconvert'),
+        Caps('video/x-raw', format='RGB'),
         Filter('imagefreeze'),
         Tee(pads=((
             Queue(max_size_buffers=1),
@@ -347,6 +349,11 @@ def run_gen(render_overlay_gen, *, source, downscale, fullscreen):
         fullscreen=fullscreen)
 
 def run(inference_size, render_overlay, *, source, downscale, fullscreen):
+    reg = Gst.Registry.get()
+    for feature in reg.get_feature_list_by_plugin('vpu.imx'):
+        # Otherwise decodebin uses vpudec to decode JPEG images and fails.
+        feature.set_rank(Gst.Rank.MARGINAL)
+
     fmt = parse_format(source)
     if fmt:
         run_camera(inference_size, render_overlay, fmt, fullscreen)
@@ -374,7 +381,6 @@ def run_camera(inference_size, render_overlay, fmt, fullscreen):
 
 def run_file(inference_size, render_overlay, *, filename, downscale, fullscreen):
     inference_size = Size(*inference_size)
-
     info = get_video_info(filename)
     render_size = Size(info.get_width(), info.get_height()) / downscale
     if info.is_image():
