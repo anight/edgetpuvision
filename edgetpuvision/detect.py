@@ -21,6 +21,10 @@ from . import gstreamer
 from . import overlays
 from .utils import load_labels, input_image_size, same_input_image_sizes
 
+def area(obj):
+    x0, y0, x1, y1 = rect = obj.bounding_box.flatten().tolist()
+    return (x1 - x0) * (y1 - y0)
+
 def render_gen(args):
     engines = [DetectionEngine(m) for m in args.model.split(',')]
     assert same_input_image_sizes(engines)
@@ -36,14 +40,15 @@ def render_gen(args):
     output = None
     while True:
         tensor, size, window, inference_rate, command = (yield output)
-
         if draw_overlay:
             start = time.monotonic()
             objs = engine.DetectWithInputTensor(tensor, threshold=args.threshold, top_k=args.top_k)
-            inference_time  = time.monotonic() - start
+            inference_time = time.monotonic() - start
 
             if labels and filtered_labels:
                 objs = [obj for obj in objs if labels[obj.label_id] in filtered_labels]
+
+            objs = [obj for obj in objs if args.min_area <= area(obj) <= args.max_area]
 
             output = overlays.detection(objs, labels, inference_time, inference_rate, size, window)
         else:
@@ -70,6 +75,10 @@ def main():
                         help='Max number of objects to detect')
     parser.add_argument('--threshold', type=float, default=0.1,
                         help='Detection threshold')
+    parser.add_argument('--min_area', type=float, default=0.0,
+                        help='Min bounding box area')
+    parser.add_argument('--max_area', type=float, default=1.0,
+                        help='Max bounding box area')
     parser.add_argument('--filter', default=None)
     parser.add_argument('--fullscreen', default=False, action='store_true',
                         help='Fullscreen rendering')
