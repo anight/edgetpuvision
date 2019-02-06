@@ -4,6 +4,8 @@ import threading
 import numpy as np
 
 from . import gstreamer
+from . import pipelines
+
 from .gst import *
 
 class Camera:
@@ -60,7 +62,7 @@ class FileCamera(Camera):
         self._filename = filename
 
     def make_pipeline(self, fmt, profile, inline_headers, bitrate, intra_period):
-        return gstreamer.file_streaming_pipeline(self._filename, self._render_size, self._inference_size)
+        return pipelines.video_streaming_pipeline(self._filename, self._render_size, self._inference_size)
 
 class V4L2Camera(Camera):
     def __init__(self, fmt, inference_size):
@@ -69,8 +71,8 @@ class V4L2Camera(Camera):
 
     def make_pipeline(self, fmt, profile, inline_headers, bitrate, intra_period):
         return (
-            gstreamer.v4l2_camera(self._fmt),
-            gstreamer.camera_streaming_pipeline(profile, bitrate, self._render_size, self._inference_size)
+            pipelines.v4l2_camera(self._fmt),
+            pipelines.camera_streaming_pipeline(profile, bitrate, self._render_size, self._inference_size)
         )
 
 def make_camera(source, inference_size):
