@@ -13,7 +13,7 @@ def _normalize_rect(rect, size):
 
 
 def classification(results, inference_time, inference_rate, size, window):
-    x0, y0, _, _ = window
+    x0, y0, w, h = window
 
     lines = [
         'Inference time: %.2f ms (%.2f fps)' % (inference_time * 1000, 1.0 / inference_time),
@@ -26,19 +26,19 @@ def classification(results, inference_time, inference_rate, size, window):
     defs = svg.Defs()
     defs += CSS_STYLES
 
-    doc = svg.Svg(viewBox='%s %s %s %s' % window, font_size='26px')
+    doc = svg.Svg(width=w, height=h, viewBox='%s %s %s %s' % window, font_size='26px')
     doc += defs
     doc += svg.normal_text(lines, x=x0 + 10, y=y0 + 10, font_size_em=1.1)
     return str(doc)
 
 
 def detection(objs, labels, inference_time, inference_rate, size, window):
-    x0, y0, _, _ = window
+    x0, y0, w, h = window
 
     defs = svg.Defs()
     defs += CSS_STYLES
 
-    doc = svg.Svg(viewBox='%s %s %s %s' % window, font_size='26px')
+    doc = svg.Svg(width=w, height=h, viewBox='%s %s %s %s' % window, font_size='26px')
     doc += defs
     doc += svg.normal_text((
         'Inference time: %.2f ms (%.2f fps)' % (inference_time * 1000, 1.0 / inference_time),
