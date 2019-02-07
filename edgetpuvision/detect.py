@@ -70,13 +70,7 @@ def render_gen(args):
         elif command == 'n':
             engine = next(engines)
 
-def main():
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--source',
-                        help='/dev/videoN:FMT:WxH:N/D or .mp4 file or image file',
-                        default='/dev/video0:YUY2:1280x720:30/1')
-    parser.add_argument('--downscale', type=float, default=2.0,
-                        help='Downscale factor for video/image file rendering')
+def add_render_gen_args(parser):
     parser.add_argument('--model',
                         help='.tflite model path', required=True)
     parser.add_argument('--labels',
@@ -91,10 +85,19 @@ def main():
                         help='Max bounding box area')
     parser.add_argument('--filter', default=None,
                         help='Comma-separated list of allowed labels')
-    parser.add_argument('--display', type=Display, choices=Display, default=Display.FULLSCREEN,
-                        help='Display mode')
     parser.add_argument('--print', default=False, action='store_true',
                         help='Print inference results')
+
+def main():
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--source',
+                        help='/dev/videoN:FMT:WxH:N/D or .mp4 file or image file',
+                        default='/dev/video0:YUY2:1280x720:30/1')
+    parser.add_argument('--downscale', type=float, default=2.0,
+                        help='Downscale factor for video/image file rendering')
+    parser.add_argument('--display', type=Display, choices=Display, default=Display.FULLSCREEN,
+                        help='Display mode')
+    add_render_gen_args(parser)
     args = parser.parse_args()
 
     if not run_gen(render_gen(args),

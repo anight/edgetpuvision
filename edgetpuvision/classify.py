@@ -74,13 +74,7 @@ def render_gen(args):
         elif command == 'n':
             engine = next(engines)
 
-def main():
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--source',
-                        help='/dev/videoN:FMT:WxH:N/D or .mp4 file or image file',
-                        default='/dev/video0:YUY2:1280x720:30/1')
-    parser.add_argument('--downscale', type=float, default=2.0,
-                        help='Downscale factor for .mp4 file rendering')
+def add_render_gen_args(parser):
     parser.add_argument('--model', required=True,
                         help='.tflite model path')
     parser.add_argument('--labels', required=True,
@@ -91,10 +85,19 @@ def main():
                         help='number of classes with highest score to display')
     parser.add_argument('--threshold', type=float, default=0.1,
                         help='class score threshold')
-    parser.add_argument('--display', type=Display, choices=Display, default=Display.FULLSCREEN,
-                        help='Display mode')
     parser.add_argument('--print', default=False, action='store_true',
                         help='Print inference results')
+
+def main():
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--source',
+                        help='/dev/videoN:FMT:WxH:N/D or .mp4 file or image file',
+                        default='/dev/video0:YUY2:1280x720:30/1')
+    parser.add_argument('--downscale', type=float, default=2.0,
+                        help='Downscale factor for .mp4 file rendering')
+    parser.add_argument('--display', type=Display, choices=Display, default=Display.FULLSCREEN,
+                        help='Display mode')
+    add_render_gen_args(parser)
     args = parser.parse_args()
 
     if not run_gen(render_gen(args),
