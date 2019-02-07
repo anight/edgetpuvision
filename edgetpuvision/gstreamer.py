@@ -1,5 +1,6 @@
 import collections
 import contextlib
+import enum
 import fcntl
 import functools
 import os
@@ -32,6 +33,14 @@ from .pipelines import *
 
 COMMAND_SAVE_FRAME = ' '
 COMMAND_PRINT_INFO = 'p'
+
+class Display(enum.Enum):
+    FULLSCREEN = 'fullscreen'
+    WINDOW = 'window'
+    NONE = 'none'
+
+    def __str__(self):
+        return self.value
 
 def set_nonblocking(fd):
     flags = fcntl.fcntl(fd, fcntl.F_GETFL)
@@ -198,23 +207,24 @@ def on_new_sample(sink, pipeline, render_overlay, render_size, images, commands,
                              inference_rate=inference_rate,
                              command=custom_command)
         overlay = pipeline.get_by_name('overlay')
-        overlay.set_property('data', svg)
+        if overlay:
+            overlay.set_property('data', svg)
 
         if save_frame:
             images.put((data, caps_size(sample.get_caps()), svg))
 
     return Gst.FlowReturn.OK
 
-def run_gen(render_overlay_gen, *, source, downscale, fullscreen):
+def run_gen(render_overlay_gen, *, source, downscale, display):
     inference_size = render_overlay_gen.send(None)  # Initialize.
     return run(inference_size,
         lambda tensor, size, window, inference_rate, command:
             render_overlay_gen.send((tensor, size, window, inference_rate, command)),
         source=source,
         downscale=downscale,
-        fullscreen=fullscreen)
+        display=display)
 
-def run(inference_size, render_overlay, *, source, downscale, fullscreen):
+def run(inference_size, render_overlay, *, source, downscale, display):
     reg = Gst.Registry.get()
     for feature in reg.get_feature_list_by_plugin('vpu.imx'):
         # Otherwise decodebin uses vpudec to decode JPEG images and fails.
@@ -222,7 +232,7 @@ def run(inference_size, render_overlay, *, source, downscale, fullscreen):
 
     fmt = parse_format(source)
     if fmt:
-        run_camera(inference_size, render_overlay, fmt, fullscreen)
+        run_camera(inference_size, render_overlay, fmt, display)
         return True
 
     filename = os.path.expanduser(source)
@@ -230,28 +240,41 @@ def run(inference_size, render_overlay, *, source, downscale, fullscreen):
         run_file(inference_size, render_overlay,
                  filename=filename,
                  downscale=downscale,
-                 fullscreen=fullscreen)
+                 display=display)
         return True
 
     return False
 
-def run_camera(inference_size, render_overlay, fmt, fullscreen):
-    inference_size = Size(*inference_size)
 
-    camera = v4l2_camera(fmt)
-    caps = next(x for x in camera if isinstance(x, Caps))
-    render_size = Size(caps.width, caps.height)
-    pipeline = camera + camera_display_pipeline(render_size, inference_size, fullscreen)
+def run_camera(inference_size, render_overlay, fmt, display):
+    inference_size = Size(*inference_size)
+    render_size = fmt.size
+
+    if display is Display.NONE:
+        pipeline = camera_headless_pipeline(fmt, render_size, inference_size)
+    else:
+        pipeline = camera_display_pipeline(fmt, render_size, inference_size,
+                                           display is Display.FULLSCREEN)
+
     return run_loop(pipeline, inference_size, render_size, render_overlay)
 
-def run_file(inference_size, render_overlay, *, filename, downscale, fullscreen):
+
+def run_file(inference_size, render_overlay, *, filename, downscale, display):
     inference_size = Size(*inference_size)
     info = get_video_info(filename)
     render_size = Size(info.get_width(), info.get_height()) / downscale
-    if info.is_image():
-        pipeline = image_display_pipeline(filename, render_size, inference_size, fullscreen)
+
+    if display is Display.NONE:
+        if info.is_image():
+            pipeline = image_headless_pipeline(filename, render_size, inference_size)
+        else:
+            pipeline = video_headless_pipeline(filename, render_size, inference_size)
     else:
-        pipeline = video_display_pipeline(filename, render_size, inference_size, fullscreen)
+        fullscreen = display is Display.FULLSCREEN
+        if info.is_image():
+            pipeline = image_display_pipeline(filename, render_size, inference_size, fullscreen)
+        else:
+            pipeline = video_display_pipeline(filename, render_size, inference_size, fullscreen)
 
     return run_loop(pipeline, inference_size, render_size, render_overlay)
 

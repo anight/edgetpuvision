@@ -17,13 +17,21 @@ import time
 
 from edgetpu.detection.engine import DetectionEngine
 
-from . import gstreamer
+
 from . import overlays
 from .utils import load_labels, input_image_size, same_input_image_sizes
+from .gstreamer import Display, run_gen
 
 def area(obj):
     x0, y0, x1, y1 = rect = obj.bounding_box.flatten().tolist()
     return (x1 - x0) * (y1 - y0)
+
+def print_results(inference_rate, objs, labels):
+    print('\nInference (rate=%.2f fps):' % inference_rate)
+    for i, obj in enumerate(objs):
+        label = labels[obj.label_id] if labels else str(obj.label_id)
+        x = (i, label) + tuple(obj.bounding_box.flatten()) + (area(obj),)
+        print('    %d: label=%s, bbox=(%.2f %.2f %.2f %.2f), bbox_area=%.2f' % x)
 
 def render_gen(args):
     engines = [DetectionEngine(m) for m in args.model.split(',')]
@@ -50,6 +58,9 @@ def render_gen(args):
 
             objs = [obj for obj in objs if args.min_area <= area(obj) <= args.max_area]
 
+            if args.print:
+                print_results(inference_rate, objs, labels)
+
             output = overlays.detection(objs, labels, inference_time, inference_rate, size, window)
         else:
             output = None
@@ -58,7 +69,6 @@ def render_gen(args):
             draw_overlay = not draw_overlay
         elif command == 'n':
             engine = next(engines)
-
 
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -79,15 +89,18 @@ def main():
                         help='Min bounding box area')
     parser.add_argument('--max_area', type=float, default=1.0,
                         help='Max bounding box area')
-    parser.add_argument('--filter', default=None)
-    parser.add_argument('--fullscreen', default=False, action='store_true',
-                        help='Fullscreen rendering')
+    parser.add_argument('--filter', default=None,
+                        help='Comma-separated list of allowed labels')
+    parser.add_argument('--display', type=Display, choices=Display, default=Display.FULLSCREEN,
+                        help='Display mode')
+    parser.add_argument('--print', default=False, action='store_true',
+                        help='Print inference results')
     args = parser.parse_args()
 
-    if not gstreamer.run_gen(render_gen(args),
-                          source=args.source,
-                          downscale=args.downscale,
-                          fullscreen=args.fullscreen):
+    if not run_gen(render_gen(args),
+                   source=args.source,
+                   downscale=args.downscale,
+                   display=args.display):
         print('Invalid source argument:', args.source)
 
 

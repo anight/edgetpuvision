@@ -70,10 +70,8 @@ class V4L2Camera(Camera):
         self._fmt = fmt
 
     def make_pipeline(self, fmt, profile, inline_headers, bitrate, intra_period):
-        return (
-            pipelines.v4l2_camera(self._fmt),
-            pipelines.camera_streaming_pipeline(profile, bitrate, self._render_size, self._inference_size)
-        )
+        return pipelines.camera_streaming_pipeline(self._fmt, profile, bitrate,
+                                                   self._render_size, self._inference_size)
 
 def make_camera(source, inference_size):
     fmt = parse_format(source)

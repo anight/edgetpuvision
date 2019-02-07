@@ -13,9 +13,9 @@ import time
 
 from edgetpu.classification.engine import ClassificationEngine
 
-from . import gstreamer
 from . import overlays
 from .utils import load_labels, input_image_size, same_input_image_sizes
+from .gstreamer import Display, run_gen
 
 
 def top_results(window, top_k):
@@ -25,13 +25,17 @@ def top_results(window, top_k):
             total_scores[label] += score
     return sorted(total_scores.items(), key=lambda kv: kv[1], reverse=True)[:top_k]
 
-
 def accumulator(size, top_k):
     window = collections.deque(maxlen=size)
     window.append((yield []))
     while True:
         window.append((yield top_results(window, top_k)))
 
+def print_results(inference_rate, results):
+    print('\nInference (rate=%.2f fps):' % inference_rate)
+    print(results)
+    for label, score in results:
+        print('  %s, score=%.2f' % (label, score))
 
 def render_gen(args):
     acc = accumulator(size=args.window, top_k=args.top_k)
@@ -59,7 +63,7 @@ def render_gen(args):
             results = [(labels[i], score) for i, score in results]
             results = acc.send(results)
             if args.print:
-                print(results)
+                print_results(inference_rate, results)
 
             output = overlays.classification(results, inference_time, inference_rate, size, window)
         else:
@@ -69,7 +73,6 @@ def render_gen(args):
             draw_overlay = not draw_overlay
         elif command == 'n':
             engine = next(engines)
-
 
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -88,16 +91,16 @@ def main():
                         help='number of classes with highest score to display')
     parser.add_argument('--threshold', type=float, default=0.1,
                         help='class score threshold')
-    parser.add_argument('--print', action='store_true', default=False,
-                        help='Print detected classes to console')
-    parser.add_argument('--fullscreen', default=False, action='store_true',
-                        help='Fullscreen rendering')
+    parser.add_argument('--display', type=Display, choices=Display, default=Display.FULLSCREEN,
+                        help='Display mode')
+    parser.add_argument('--print', default=False, action='store_true',
+                        help='Print inference results')
     args = parser.parse_args()
 
-    if not gstreamer.run_gen(render_gen(args),
-                         source=args.source,
-                         downscale=args.downscale,
-                         fullscreen=args.fullscreen):
+    if not run_gen(render_gen(args),
+                   source=args.source,
+                   downscale=args.downscale,
+                   display=args.display):
         print('Invalid source argument:', args.source)
 
 if __name__ == '__main__':
