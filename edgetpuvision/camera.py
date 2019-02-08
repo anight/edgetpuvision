@@ -26,16 +26,14 @@ class Camera:
         pass
 
     def start_recording(self, obj, format, profile, inline_headers, bitrate, intra_period):
-        size = min_outer_size(self._inference_size, self._render_size)
-        window = center_inside(self._render_size, size)
-        fps_counter = gstreamer.avg_fps_counter(30)
+        layout = gstreamer.make_layout(self._inference_size, self._render_size)
 
         def on_buffer(data, _):
             obj.write(data)
 
         def on_image(data, _):
             if self.on_image:
-                self.on_image(np.frombuffer(data, dtype=np.uint8), next(fps_counter), size, window)
+                self.on_image(np.frombuffer(data, dtype=np.uint8), layout)
 
         signals = {
           'h264sink': {'new-sample': gstreamer.new_sample_callback(on_buffer)},

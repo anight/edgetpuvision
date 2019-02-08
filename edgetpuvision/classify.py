@@ -14,7 +14,7 @@ import time
 from edgetpu.classification.engine import ClassificationEngine
 
 from . import overlays
-from .utils import load_labels, input_image_size, same_input_image_sizes
+from .utils import load_labels, input_image_size, same_input_image_sizes, avg_fps_counter
 from .gstreamer import Display, run_gen
 
 
@@ -41,6 +41,8 @@ def render_gen(args):
     acc = accumulator(size=args.window, top_k=args.top_k)
     acc.send(None)  # Initialize.
 
+    fps_counter=avg_fps_counter(30)
+
     engines = [ClassificationEngine(m) for m in args.model.split(',')]
     assert same_input_image_sizes(engines)
     engines = itertools.cycle(engines)
@@ -53,8 +55,9 @@ def render_gen(args):
 
     output = None
     while True:
-        tensor, size, window, inference_rate, command = (yield output)
+        tensor, layout, command = (yield output)
 
+        inference_rate = next(fps_counter)
         if draw_overlay:
             start = time.monotonic()
             results = engine.ClassifyWithInputTensor(tensor, threshold=args.threshold, top_k=args.top_k)
@@ -65,7 +68,7 @@ def render_gen(args):
             if args.print:
                 print_results(inference_rate, results)
 
-            output = overlays.classification(results, inference_time, inference_rate, size, window)
+            output = overlays.classification(results, inference_time, inference_rate, layout)
         else:
             output = None
 

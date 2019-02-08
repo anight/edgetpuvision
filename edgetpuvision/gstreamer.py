@@ -96,16 +96,13 @@ def save_frame(rgb, size, overlay=None, ext='png'):
             f.write(overlay)
         print('Overlay saved as "%s"' % name)
 
-def avg_fps_counter(window_size):
-    window = collections.deque(maxlen=window_size)
-    prev = time.monotonic()
-    yield 0.0  # First fps value.
 
-    while True:
-        curr = time.monotonic()
-        window.append(curr - prev)
-        prev = curr
-        yield len(window) / sum(window)
+Layout = collections.namedtuple('Layout', ('size', 'window'))
+
+def make_layout(inference_size, render_size):
+    size = min_outer_size(inference_size, render_size)
+    window = center_inside(render_size, size)
+    return Layout(size=size, window=window)
 
 def caps_size(caps):
     structure = caps.get_structure(0)
@@ -186,9 +183,8 @@ def on_keypress(fd, flags, commands):
         commands.put(ch)
     return True
 
-def on_new_sample(sink, pipeline, render_overlay, render_size, images, commands, fps_counter):
+def on_new_sample(sink, pipeline, render_overlay, render_size, images, commands):
     with pull_sample(sink) as (sample, data):
-        inference_rate = next(fps_counter)
         custom_command = None
         save_frame = False
 
@@ -197,14 +193,12 @@ def on_new_sample(sink, pipeline, render_overlay, render_size, images, commands,
             save_frame = True
         elif command == COMMAND_PRINT_INFO:
             print('Timestamp: %.2f' % time.monotonic())
-            print('Inference FPS: %s' % inference_rate)
             print('Render size: %d x %d' % render_size)
             print('Inference size: %d x %d' % caps_size(sample.get_caps()))
         else:
             custom_command = command
 
         svg = render_overlay(np.frombuffer(data, dtype=np.uint8),
-                             inference_rate=inference_rate,
                              command=custom_command)
         overlay = pipeline.get_by_name('overlay')
         if overlay:
@@ -218,8 +212,8 @@ def on_new_sample(sink, pipeline, render_overlay, render_size, images, commands,
 def run_gen(render_overlay_gen, *, source, downscale, display):
     inference_size = render_overlay_gen.send(None)  # Initialize.
     return run(inference_size,
-        lambda tensor, size, window, inference_rate, command:
-            render_overlay_gen.send((tensor, size, window, inference_rate, command)),
+        lambda tensor, layout, command:
+            render_overlay_gen.send((tensor, layout, command)),
         source=source,
         downscale=downscale,
         display=display)
@@ -285,18 +279,13 @@ def run_loop(pipeline, inference_size, render_size, render_overlay):
             GLib.io_add_watch(sys.stdin.fileno(), GLib.IO_IN, on_keypress, commands)
             stack.enter_context(term_raw_mode(sys.stdin.fileno()))
 
-        size = min_outer_size(inference_size, render_size)
-        window = center_inside(render_size, size)
-
         run_pipeline(loop, pipeline, {'appsink': {'new-sample':
             functools.partial(on_new_sample,
                 render_overlay=functools.partial(render_overlay,
-                    size=size,
-                    window=window),
+                                                 layout=make_layout(inference_size, render_size)),
                 render_size=render_size,
                 images=images,
-                commands=commands,
-                fps_counter=avg_fps_counter(30))}
+                commands=commands)}
         })
 
     while GLib.MainContext.default().iteration(False):

@@ -19,7 +19,7 @@ from edgetpu.detection.engine import DetectionEngine
 
 
 from . import overlays
-from .utils import load_labels, input_image_size, same_input_image_sizes
+from .utils import load_labels, input_image_size, same_input_image_sizes, avg_fps_counter
 from .gstreamer import Display, run_gen
 
 def area(obj):
@@ -34,6 +34,8 @@ def print_results(inference_rate, objs, labels):
         print('    %d: label=%s, bbox=(%.2f %.2f %.2f %.2f), bbox_area=%.2f' % x)
 
 def render_gen(args):
+    fps_counter=avg_fps_counter(30)
+
     engines = [DetectionEngine(m) for m in args.model.split(',')]
     assert same_input_image_sizes(engines)
     engines = itertools.cycle(engines)
@@ -47,7 +49,9 @@ def render_gen(args):
 
     output = None
     while True:
-        tensor, size, window, inference_rate, command = (yield output)
+        tensor, layout, command = (yield output)
+
+        inference_rate = next(fps_counter)
         if draw_overlay:
             start = time.monotonic()
             objs = engine.DetectWithInputTensor(tensor, threshold=args.threshold, top_k=args.top_k)
@@ -61,7 +65,7 @@ def render_gen(args):
             if args.print:
                 print_results(inference_rate, objs, labels)
 
-            output = overlays.detection(objs, labels, inference_time, inference_rate, size, window)
+            output = overlays.detection(objs, labels, inference_time, inference_rate, layout)
         else:
             output = None
 
