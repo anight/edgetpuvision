@@ -12,26 +12,36 @@
 #   --labels ${TEST_DATA}/coco_labels.txt
 
 import argparse
+import collections
 import itertools
 import time
 
 from edgetpu.detection.engine import DetectionEngine
 
-
 from . import overlays
 from .utils import load_labels, input_image_size, same_input_image_sizes, avg_fps_counter
 from .gstreamer import Display, run_gen
 
-def area(obj):
-    x0, y0, x1, y1 = rect = obj.bounding_box.flatten().tolist()
-    return (x1 - x0) * (y1 - y0)
+BBox = collections.namedtuple('BBox', ('x', 'y', 'w', 'h'))
+BBox.area = lambda self: self.w * self.h
+BBox.scale = lambda self, sx, sy: BBox(x=self.x * sx, y=self.y * sy,
+                                       w=self.w * sx, h=self.h * sy)
+BBox.__str__ = lambda self: 'BBox(x=%.2f y=%.2f w=%.2f h=%.2f)' % self
 
-def print_results(inference_rate, objs, labels):
+Object = collections.namedtuple('Object', ('id', 'label', 'score', 'bbox'))
+Object.__str__ = lambda self: 'Object(id=%d, label=%s, score=%.2f, %s)' % self
+
+def convert(obj, labels):
+    x0, y0, x1, y1 = obj.bounding_box.flatten().tolist()
+    return Object(id=obj.label_id,
+                  label=labels[obj.label_id] if labels else None,
+                  score=obj.score,
+                  bbox=BBox(x=x0, y=y0, w=x1 - x0, h=y1 - y0))
+
+def print_results(inference_rate, objs):
     print('\nInference (rate=%.2f fps):' % inference_rate)
     for i, obj in enumerate(objs):
-        label = labels[obj.label_id] if labels else str(obj.label_id)
-        x = (i, label) + tuple(obj.bounding_box.flatten()) + (area(obj),)
-        print('    %d: label=%s, bbox=(%.2f %.2f %.2f %.2f), bbox_area=%.2f' % x)
+        print('    %d: %s, area=%.2f' % (i, obj, obj.bbox.area()))
 
 def render_gen(args):
     fps_counter=avg_fps_counter(30)
@@ -56,16 +66,17 @@ def render_gen(args):
             start = time.monotonic()
             objs = engine.DetectWithInputTensor(tensor, threshold=args.threshold, top_k=args.top_k)
             inference_time = time.monotonic() - start
+            objs = [convert(obj, labels) for obj in objs]
 
             if labels and filtered_labels:
-                objs = [obj for obj in objs if labels[obj.label_id] in filtered_labels]
+                objs = [obj for obj in objs if obj.label in filtered_labels]
 
-            objs = [obj for obj in objs if args.min_area <= area(obj) <= args.max_area]
+            objs = [obj for obj in objs if args.min_area <= obj.bbox.area() <= args.max_area]
 
             if args.print:
-                print_results(inference_rate, objs, labels)
+                print_results(inference_rate, objs)
 
-            output = overlays.detection(objs, labels, inference_time, inference_rate, layout)
+            output = overlays.detection(objs, inference_time, inference_rate, layout)
         else:
             output = None
 
