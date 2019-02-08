@@ -9,6 +9,9 @@ def run(add_render_gen_args, render_gen):
     logging.basicConfig(level=logging.INFO)
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--bitrate', type=int, default=1000000,
+                        help='Video streaming bitrate (bit/s)')
+
     parser.add_argument('--source',
                         help='/dev/videoN:FMT:WxH:N/D or .mp4 file or image file',
                         default='/dev/video0:YUY2:1280x720:30/1')
@@ -19,7 +22,7 @@ def run(add_render_gen_args, render_gen):
     camera = make_camera(args.source, next(gen))
     assert camera is not None
 
-    with StreamingServer(camera) as server:
+    with StreamingServer(camera, args.bitrate) as server:
         def on_image(tensor, layout):
             overlay = gen.send((tensor, layout, None))
             server.send_overlay(overlay)
