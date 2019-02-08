@@ -4,6 +4,7 @@ import enum
 import fcntl
 import functools
 import os
+import pathlib
 import queue
 import sys
 import termios
@@ -112,8 +113,7 @@ def caps_size(caps):
                 structure.get_value('height'))
 
 def get_video_info(filename):
-    #Command line: gst-discoverer-1.0 -v ~/cars_highway.mp4
-    uri = 'file://' + filename
+    uri = pathlib.Path(filename).absolute().as_uri()
     discoverer = GstPbutils.Discoverer()
     info = discoverer.discover_uri(uri)
 

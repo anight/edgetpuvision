@@ -41,8 +41,11 @@ def center_inside(inner, outer):
     return int((outer.width - inner.width) / 2), int((outer.height - inner.height) / 2), \
            inner.width, inner.height
 
+def escape(s):
+    return s.replace(' ', '\\ ') if isinstance(s, str) else s
+
 def join_params(params, sep=' '):
-    return sep.join('%s=%s' % (k.replace('_', '-'), v) for k, v in params.items())
+    return sep.join('%s=%s' % (k.replace('_', '-'), escape(v)) for k, v in params.items())
 
 def join(name, sep, params, param_sep=' '):
     return name if not params else name + sep + join_params(params, param_sep)
