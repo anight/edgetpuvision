@@ -2,7 +2,7 @@ import collections
 import itertools
 import re
 
-__all__ = ('Filter', 'Queue', 'Caps', 'Tee',
+__all__ = ('Filter', 'Source', 'Sink', 'Queue', 'Tee', 'Caps', 'Pad',
            'Size', 'Fraction', 'Format',
            'describe', 'max_inner_size', 'min_outer_size', 'center_inside', 'parse_format')
 
@@ -50,80 +50,58 @@ def join_params(params, sep=' '):
 def join(name, sep, params, param_sep=' '):
     return name if not params else name + sep + join_params(params, param_sep)
 
-def params_with_name(params, base, name_gens):
-    if 'name' in params:
-        return params
-    else:
-        return {**params, 'name': base + next(name_gens[base])}
-
-def suffix_gen():
-    yield ''
-    for i in itertools.count(1):
-        yield str(i)
-
-class Element:
-    def __init__(self, params):
-        self.params = params
-
-    def __getattr__(self, name):
-        return self.params[name]
-
-class Filter(Element):
-    def __init__(self, filtername, pads=None, **params):
-        super().__init__(params)
-        self.filtername = filtername
-        self.pads = pads
+class Pad:
+    def __init__(self, name, pad=''):
+        self.name = name
+        self.pad = pad
 
     def __str__(self):
-        return join(self.filtername, ' ', self.params)
+        return '%s.%s' % (self.name, self.pad)
 
-class Queue(Element):
-    def __init__(self, **params):
-        super().__init__(params)
-
-    def __str__(self):
-        return join('queue', ' ', self.params)
-
-class Caps(Element):
+class Caps:
     def __init__(self, mediatype, **params):
-        super().__init__(params)
+        self.params = params
         self.mediatype = mediatype
 
     def __str__(self):
         return join(self.mediatype, ',', self.params, ',')
 
-class Tee(Element):
-    def __init__(self, pads=None, **params):
-        super().__init__(params)
-        self.pads = pads
+class Element:
+    def __init__(self, elementname, params):
+        self.elementname = elementname
         self.params = params
 
+    def __getattr__(self, name):
+        return self.params[name]
+
     def __str__(self):
-        return join('tee', ' ', self.params)
+        return join(self.elementname, ' ', self.params)
 
-def describe0(arg, name_gens, depth):
-    recur = lambda x: describe0(x, name_gens, depth + 1)
-    indent = '  ' * (depth + 1)
+class Filter(Element):
+    def __init__(self, filtername, **params):
+        super().__init__(filtername, params)
 
+class Source(Element):
+    def __init__(self, sourcename, **params):
+        super().__init__(sourcename + 'src', params)
+
+class Sink(Element):
+    def __init__(self, sinkname, **params):
+        super().__init__(sinkname + 'sink', params)
+
+class Queue(Element):
+    def __init__(self, **params):
+        super().__init__('queue', params)
+
+class Tee(Element):
+    def __init__(self, **params):
+        super().__init__('tee', params)
+
+def describe0(arg):
     if isinstance(arg, collections.Sequence):
-        return ' ! '.join(recur(x) for x in arg)
-    elif isinstance(arg, Tee):
-        params = params_with_name(arg.params, 't', name_gens)
-        return join('tee', ' ', params) + '\n' + \
-             '\n'.join('%s%s. ! %s' % (indent, params['name'], recur(x)) for x in arg.pads)
-    elif isinstance(arg, Filter):
-        body = join(arg.filtername, ' ', arg.params)
-        if arg.pads:
-            params = params_with_name(arg.params, 'f', name_gens)
-            return body + '\n' + \
-              '\n'.join('%s%s.%s ! %s' % (indent, params['name'], pad_name, recur(x)) for pad_name, x in arg.pads.items())
-        return body
-    elif isinstance(arg, Queue):
-        return join('queue', ' ', arg.params)
-    elif isinstance(arg, Caps):
-        return join(arg.mediatype, ',', arg.params, ',')
+        return ' ! '.join(describe0(x) for x in arg)
     else:
-        raise ValueError('Invalid element: %s' % arg)
+        return str(arg)
 
 def describe(pipeline):
-    return describe0(pipeline, collections.defaultdict(suffix_gen), 0)
+    return '\n'.join(describe0(x) for x in pipeline)
