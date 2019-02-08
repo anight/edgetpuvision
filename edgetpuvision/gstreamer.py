@@ -225,11 +225,6 @@ def run_gen(render_overlay_gen, *, source, downscale, display):
         display=display)
 
 def run(inference_size, render_overlay, *, source, downscale, display):
-    reg = Gst.Registry.get()
-    for feature in reg.get_feature_list_by_plugin('vpu.imx'):
-        # Otherwise decodebin uses vpudec to decode JPEG images and fails.
-        feature.set_rank(Gst.Rank.MARGINAL)
-
     fmt = parse_format(source)
     if fmt:
         run_camera(inference_size, render_overlay, fmt, display)
