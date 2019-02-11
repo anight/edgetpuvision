@@ -13,10 +13,32 @@ import time
 
 from edgetpu.classification.engine import ClassificationEngine
 
-from . import overlays
+from . import svg
 from .utils import load_labels, input_image_size, same_input_image_sizes, avg_fps_counter
 from .gstreamer import Display, run_gen
 
+
+CSS_STYLES = str(svg.CssStyle({'.txt': svg.Style(fill='white'),
+                               '.shd': svg.Style(fill='black', fill_opacity=0.6)}))
+
+def overlay(results, inference_time, inference_rate, layout):
+    x0, y0, w, h = layout.window
+
+    lines = [
+        'Inference time: %.2f ms (%.2f fps)' % (inference_time * 1000, 1.0 / inference_time),
+        'Inference frame rate: %.2f fps' % inference_rate
+    ]
+
+    for i, (label, score) in enumerate(results):
+        lines.append('%s (%.2f)' % (label, score))
+
+    defs = svg.Defs()
+    defs += CSS_STYLES
+
+    doc = svg.Svg(width=w, height=h, viewBox='%s %s %s %s' % layout.window, font_size='26px')
+    doc += defs
+    doc += svg.normal_text(lines, x=x0 + 10, y=y0 + 10, font_size_em=1.1)
+    return str(doc)
 
 def top_results(window, top_k):
     total_scores = collections.defaultdict(lambda: 0.0)
@@ -68,7 +90,7 @@ def render_gen(args):
             if args.print:
                 print_results(inference_rate, results)
 
-            output = overlays.classification(results, inference_time, inference_rate, layout)
+            output = overlay(results, inference_time, inference_rate, layout)
         else:
             output = None
 
