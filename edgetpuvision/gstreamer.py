@@ -34,6 +34,7 @@ from .pipelines import *
 
 COMMAND_SAVE_FRAME = ' '
 COMMAND_PRINT_INFO = 'p'
+COMMAND_QUIT       = 'q'
 
 class Display(enum.Enum):
     FULLSCREEN = 'fullscreen'
@@ -96,13 +97,13 @@ def save_frame(rgb, size, overlay=None, ext='png'):
             f.write(overlay)
         print('Overlay saved as "%s"' % name)
 
-
-Layout = collections.namedtuple('Layout', ('size', 'window'))
+Layout = collections.namedtuple('Layout', ('size', 'window', 'inference_size', 'render_size'))
 
 def make_layout(inference_size, render_size):
     size = min_outer_size(inference_size, render_size)
     window = center_inside(render_size, size)
-    return Layout(size=size, window=window)
+    return Layout(size=size, window=window,
+                  inference_size=inference_size, render_size=render_size)
 
 def caps_size(caps):
     structure = caps.get_structure(0)
@@ -132,7 +133,7 @@ def pull_sample(sink):
     buf.unmap(mapinfo)
 
 def new_sample_callback(process):
-    def callback(sink, pipeline):
+    def callback(sink, pipeline, loop):
         with pull_sample(sink) as (sample, data):
             process(data, caps_size(sample.get_caps()))
         return Gst.FlowReturn.OK
@@ -161,7 +162,7 @@ def run_pipeline(loop, pipeline, signals):
         component = pipeline.get_by_name(name)
         if component:
             for signal_name, signal_handler in signals.items():
-                component.connect(signal_name, signal_handler, pipeline)
+                component.connect(signal_name, signal_handler, pipeline, loop)
 
     # Set up a pipeline bus watch to catch errors.
     bus = pipeline.get_bus()
@@ -177,13 +178,16 @@ def run_pipeline(loop, pipeline, signals):
     finally:
         pipeline.set_state(Gst.State.NULL)
 
+    # Process all pending operations on the loop.
+    while loop.get_context().iteration(False):
+        pass
 
 def on_keypress(fd, flags, commands):
     for ch in sys.stdin.read():
         commands.put(ch)
     return True
 
-def on_new_sample(sink, pipeline, render_overlay, render_size, images, commands):
+def on_new_sample(sink, pipeline, loop, render_overlay, layout, images, commands):
     with pull_sample(sink) as (sample, data):
         custom_command = None
         save_frame = False
@@ -193,8 +197,10 @@ def on_new_sample(sink, pipeline, render_overlay, render_size, images, commands)
             save_frame = True
         elif command == COMMAND_PRINT_INFO:
             print('Timestamp: %.2f' % time.monotonic())
-            print('Render size: %d x %d' % render_size)
-            print('Inference size: %d x %d' % caps_size(sample.get_caps()))
+            print('Render size: %d x %d' % layout.render_size)
+            print('Inference size: %d x %d' % layout.inference_size)
+        elif  command == COMMAND_QUIT:
+            loop.quit()
         else:
             custom_command = command
 
@@ -205,7 +211,7 @@ def on_new_sample(sink, pipeline, render_overlay, render_size, images, commands)
             overlay.set_property('data', svg)
 
         if save_frame:
-            images.put((data, caps_size(sample.get_caps()), svg))
+            images.put((data, layout.inference_size, svg))
 
     return Gst.FlowReturn.OK
 
@@ -219,55 +225,50 @@ def run_gen(render_overlay_gen, *, source, downscale, display):
         display=display)
 
 def run(inference_size, render_overlay, *, source, downscale, display):
-    fmt = parse_format(source)
-    if fmt:
-        run_camera(inference_size, render_overlay, fmt, display)
-        return True
-
-    filename = os.path.expanduser(source)
-    if os.path.isfile(filename):
-        run_file(inference_size, render_overlay,
-                 filename=filename,
-                 downscale=downscale,
-                 display=display)
+    result = get_pipeline(source, inference_size, downscale, display)
+    if result:
+        layout, pipeline = result
+        run_loop(pipeline, layout, render_overlay)
         return True
 
     return False
 
-
-def run_camera(inference_size, render_overlay, fmt, display):
+def get_pipeline(source, inference_size, downscale, display):
     inference_size = Size(*inference_size)
-    render_size = fmt.size
+    fmt = parse_format(source)
+    if fmt:
+        layout = make_layout(inference_size, fmt.size)
+        return layout, camera_pipeline(fmt, layout, display)
 
+    filename = os.path.expanduser(source)
+    if os.path.isfile(filename):
+        info = get_video_info(filename)
+        render_size = Size(info.get_width(), info.get_height()) / downscale
+        layout = make_layout(inference_size, render_size)
+        return layout, file_pipline(filename, info, layout, display)
+
+    return None
+
+def camera_pipeline(fmt, layout, display):
     if display is Display.NONE:
-        pipeline = camera_headless_pipeline(fmt, render_size, inference_size)
+        return camera_headless_pipeline(fmt, layout)
     else:
-        pipeline = camera_display_pipeline(fmt, render_size, inference_size,
-                                           display is Display.FULLSCREEN)
+        return camera_display_pipeline(fmt, layout, display is Display.FULLSCREEN)
 
-    return run_loop(pipeline, inference_size, render_size, render_overlay)
-
-
-def run_file(inference_size, render_overlay, *, filename, downscale, display):
-    inference_size = Size(*inference_size)
-    info = get_video_info(filename)
-    render_size = Size(info.get_width(), info.get_height()) / downscale
-
+def file_pipline(filename, info, layout, display):
     if display is Display.NONE:
         if info.is_image():
-            pipeline = image_headless_pipeline(filename, render_size, inference_size)
+            return image_headless_pipeline(filename, layout)
         else:
-            pipeline = video_headless_pipeline(filename, render_size, inference_size)
+            return video_headless_pipeline(filename, layout)
     else:
         fullscreen = display is Display.FULLSCREEN
         if info.is_image():
-            pipeline = image_display_pipeline(filename, render_size, inference_size, fullscreen)
+            return image_display_pipeline(filename, layout, fullscreen)
         else:
-            pipeline = video_display_pipeline(filename, render_size, inference_size, fullscreen)
+            return video_display_pipeline(filename, layout, fullscreen)
 
-    return run_loop(pipeline, inference_size, render_size, render_overlay)
-
-def run_loop(pipeline, inference_size, render_size, render_overlay):
+def run_loop(pipeline, layout, render_overlay):
     loop = GLib.MainLoop()
     commands = queue.Queue()
 
@@ -281,12 +282,8 @@ def run_loop(pipeline, inference_size, render_size, render_overlay):
 
         run_pipeline(loop, pipeline, {'appsink': {'new-sample':
             functools.partial(on_new_sample,
-                render_overlay=functools.partial(render_overlay,
-                                                 layout=make_layout(inference_size, render_size)),
-                render_size=render_size,
+                render_overlay=functools.partial(render_overlay, layout=layout),
+                layout=layout,
                 images=images,
                 commands=commands)}
         })
-
-    while GLib.MainContext.default().iteration(False):
-        pass

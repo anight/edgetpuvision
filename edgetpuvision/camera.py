@@ -10,8 +10,7 @@ from .gst import *
 
 class Camera:
     def __init__(self, render_size, inference_size):
-        self._render_size = Size(*render_size)
-        self._inference_size = Size(*inference_size)
+        self._layout = gstreamer.make_layout(Size(*inference_size), Size(*render_size))
 
         self._loop = gstreamer.loop()
         self._thread = None
@@ -20,20 +19,18 @@ class Camera:
 
     @property
     def resolution(self):
-        return self._render_size
+        return self._layout.render_size
 
     def request_key_frame(self):
         pass
 
     def start_recording(self, obj, format, profile, inline_headers, bitrate, intra_period):
-        layout = gstreamer.make_layout(self._inference_size, self._render_size)
-
         def on_buffer(data, _):
             obj.write(data)
 
         def on_image(data, _):
             if self.on_image:
-                self.on_image(np.frombuffer(data, dtype=np.uint8), layout)
+                self.on_image(np.frombuffer(data, dtype=np.uint8), self._layout)
 
         signals = {
           'h264sink': {'new-sample': gstreamer.new_sample_callback(on_buffer)},
@@ -60,7 +57,7 @@ class FileCamera(Camera):
         self._filename = filename
 
     def make_pipeline(self, fmt, profile, inline_headers, bitrate, intra_period):
-        return pipelines.video_streaming_pipeline(self._filename, self._render_size, self._inference_size)
+        return pipelines.video_streaming_pipeline(self._filename, self._layout)
 
 class V4L2Camera(Camera):
     def __init__(self, fmt, inference_size):
@@ -68,8 +65,7 @@ class V4L2Camera(Camera):
         self._fmt = fmt
 
     def make_pipeline(self, fmt, profile, inline_headers, bitrate, intra_period):
-        return pipelines.camera_streaming_pipeline(self._fmt, profile, bitrate,
-                                                   self._render_size, self._inference_size)
+        return pipelines.camera_streaming_pipeline(self._fmt, profile, bitrate, self._layout)
 
 def make_camera(source, inference_size):
     fmt = parse_format(source)
