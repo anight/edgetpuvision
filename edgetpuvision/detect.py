@@ -20,8 +20,8 @@ import time
 from edgetpu.detection.engine import DetectionEngine
 
 from . import svg
+from .apps import run_app
 from .utils import load_labels, input_image_size, same_input_image_sizes, avg_fps_counter
-from .gstreamer import Display, run_gen
 
 CSS_STYLES = str(svg.CssStyle({'.txt': svg.Style(fill='white'),
                                '.shd': svg.Style(fill='black', fill_opacity=0.6),
@@ -145,23 +145,7 @@ def add_render_gen_args(parser):
                         help='Print inference results')
 
 def main():
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--source',
-                        help='/dev/videoN:FMT:WxH:N/D or .mp4 file or image file',
-                        default='/dev/video0:YUY2:1280x720:30/1')
-    parser.add_argument('--downscale', type=float, default=2.0,
-                        help='Downscale factor for video/image file rendering')
-    parser.add_argument('--display', type=Display, choices=Display, default=Display.FULLSCREEN,
-                        help='Display mode')
-    add_render_gen_args(parser)
-    args = parser.parse_args()
-
-    if not run_gen(render_gen(args),
-                   source=args.source,
-                   downscale=args.downscale,
-                   display=args.display):
-        print('Invalid source argument:', args.source)
-
+    run_app(add_render_gen_args, render_gen)
 
 if __name__ == '__main__':
     main()

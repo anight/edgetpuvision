@@ -100,6 +100,8 @@ def save_frame(rgb, size, overlay=None, ext='png'):
 Layout = collections.namedtuple('Layout', ('size', 'window', 'inference_size', 'render_size'))
 
 def make_layout(inference_size, render_size):
+    inference_size = Size(*inference_size)
+    render_size = Size(*render_size)
     size = min_outer_size(inference_size, render_size)
     window = center_inside(render_size, size)
     return Layout(size=size, window=window,
@@ -120,7 +122,7 @@ def get_video_info(filename):
     return streams[0]
 
 def loop():
-    return GLib.MainLoop.new(None, False)
+    return GLib.MainLoop()
 
 @contextlib.contextmanager
 def pull_sample(sink):
@@ -228,13 +230,12 @@ def run(inference_size, render_overlay, *, source, downscale, display):
     result = get_pipeline(source, inference_size, downscale, display)
     if result:
         layout, pipeline = result
-        run_loop(pipeline, layout, render_overlay)
+        run_loop(loop(), pipeline, layout, render_overlay)
         return True
 
     return False
 
 def get_pipeline(source, inference_size, downscale, display):
-    inference_size = Size(*inference_size)
     fmt = parse_format(source)
     if fmt:
         layout = make_layout(inference_size, fmt.size)
@@ -245,7 +246,7 @@ def get_pipeline(source, inference_size, downscale, display):
         info = get_video_info(filename)
         render_size = Size(info.get_width(), info.get_height()) / downscale
         layout = make_layout(inference_size, render_size)
-        return layout, file_pipline(filename, info, layout, display)
+        return layout, file_pipline(info.is_image(), filename, layout, display)
 
     return None
 
@@ -255,21 +256,21 @@ def camera_pipeline(fmt, layout, display):
     else:
         return camera_display_pipeline(fmt, layout, display is Display.FULLSCREEN)
 
-def file_pipline(filename, info, layout, display):
+def file_pipline(is_image, filename, layout, display):
     if display is Display.NONE:
-        if info.is_image():
+        if is_image:
             return image_headless_pipeline(filename, layout)
         else:
             return video_headless_pipeline(filename, layout)
     else:
         fullscreen = display is Display.FULLSCREEN
-        if info.is_image():
+        if is_image:
             return image_display_pipeline(filename, layout, fullscreen)
         else:
             return video_display_pipeline(filename, layout, fullscreen)
 
-def run_loop(pipeline, layout, render_overlay):
-    loop = GLib.MainLoop()
+def run_loop(loop, pipeline, layout, render_overlay, signals=None):
+    signals = signals or {}
     commands = queue.Queue()
 
     with contextlib.ExitStack() as stack:
@@ -280,10 +281,11 @@ def run_loop(pipeline, layout, render_overlay):
             GLib.io_add_watch(sys.stdin.fileno(), GLib.IO_IN, on_keypress, commands)
             stack.enter_context(term_raw_mode(sys.stdin.fileno()))
 
-        run_pipeline(loop, pipeline, {'appsink': {'new-sample':
-            functools.partial(on_new_sample,
+        run_pipeline(loop, pipeline, {'appsink':
+            {'new-sample': functools.partial(on_new_sample,
                 render_overlay=functools.partial(render_overlay, layout=layout),
                 layout=layout,
                 images=images,
-                commands=commands)}
+                commands=commands)},
+            **signals
         })

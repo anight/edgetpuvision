@@ -11,11 +11,11 @@
 #   --model ${TEST_DATA}/mobilenet_ssd_v2_coco_quant_postprocess_edgetpu.tflite \
 #   --labels ${TEST_DATA}/coco_labels.txt
 
+from .apps import run_server
 from .detect import add_render_gen_args, render_gen
-from .server import run
 
 def main():
-    run(add_render_gen_args, render_gen)
+    run_server(add_render_gen_args, render_gen)
 
 if __name__ == '__main__':
     main()

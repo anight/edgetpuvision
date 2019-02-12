@@ -1,8 +1,6 @@
 import os
 import threading
 
-import numpy as np
-
 from . import gstreamer
 from . import pipelines
 
@@ -10,12 +8,11 @@ from .gst import *
 
 class Camera:
     def __init__(self, render_size, inference_size):
-        self._layout = gstreamer.make_layout(Size(*inference_size), Size(*render_size))
+        self._layout = gstreamer.make_layout(inference_size, render_size)
 
         self._loop = gstreamer.loop()
         self._thread = None
-
-        self.on_image = None
+        self.render_overlay = None
 
     @property
     def resolution(self):
@@ -28,19 +25,19 @@ class Camera:
         def on_buffer(data, _):
             obj.write(data)
 
-        def on_image(data, _):
-            if self.on_image:
-                self.on_image(np.frombuffer(data, dtype=np.uint8), self._layout)
+        def render_overlay(tensor, layout, command):
+            if self.render_overlay:
+                self.render_overlay(tensor, layout, command)
+            return None
 
         signals = {
           'h264sink': {'new-sample': gstreamer.new_sample_callback(on_buffer)},
-          'appsink': {'new-sample': gstreamer.new_sample_callback(on_image)},
         }
 
         pipeline = self.make_pipeline(format, profile, inline_headers, bitrate, intra_period)
 
-        self._thread = threading.Thread(target=gstreamer.run_pipeline,
-                                        args=(self._loop, pipeline, signals))
+        self._thread = threading.Thread(target=gstreamer.run_loop,
+                                        args=(self._loop, pipeline, self._layout, render_overlay, signals))
         self._thread.start()
 
     def stop_recording(self):
