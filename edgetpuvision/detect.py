@@ -39,8 +39,11 @@ Object.__str__ = lambda self: 'Object(id=%d, label=%s, score=%.2f, %s)' % self
 def color(i, total):
     return tuple(int(255.0 * c) for c in colorsys.hsv_to_rgb(i / total, 1.0, 1.0))
 
-def gen_colors(keys):
-    return {key : color(i, len(keys)) for i, key in enumerate(keys)}
+def gen_colors_unique(keys):
+    return {key : svg.rgb(color(i, len(keys))) for i, key in enumerate(keys)}
+
+def gen_colors_single(keys, color):
+    return {key : color for key in keys}
 
 def overlay(objs, colors, inference_time, inference_rate, layout):
     x0, y0, w, h = layout.window
@@ -66,7 +69,7 @@ def overlay(objs, colors, inference_time, inference_rate, layout):
         x, y, w, h = obj.bbox.scale(*layout.size)
         doc += svg.normal_text(caption, x, y - 5)
         doc += svg.Rect(x=x, y=y, width=w, height=h, rx=2, ry=2,
-                        style='stroke:%s' % svg.rgb(colors[obj.id]))
+                        style='stroke:%s' % colors[obj.id])
 
     return str(doc)
 
@@ -93,7 +96,10 @@ def render_gen(args):
 
     labels = load_labels(args.labels) if args.labels else None
     filtered_labels = set(l.strip() for l in args.filter.split(',')) if args.filter else None
-    colors = gen_colors(labels.keys())
+    if args.color:
+        colors = gen_colors_single(labels.keys(), args.color)
+    else:
+        colors = gen_colors_unique(labels.keys())
     draw_overlay = True
 
     yield input_image_size(engine)
@@ -141,6 +147,8 @@ def add_render_gen_args(parser):
                         help='Max bounding box area')
     parser.add_argument('--filter', default=None,
                         help='Comma-separated list of allowed labels')
+    parser.add_argument('--color', default=None,
+                        help='Bounding box display color'),
     parser.add_argument('--print', default=False, action='store_true',
                         help='Print inference results')
 
