@@ -25,7 +25,7 @@ from .utils import load_labels, input_image_size, same_input_image_sizes, avg_fp
 
 CSS_STYLES = str(svg.CssStyle({'.txt': svg.Style(fill='white'),
                                '.shd': svg.Style(fill='black', fill_opacity=0.6),
-                               'rect': svg.Style(fill_opacity=0.1, stroke_width='2px')}))
+                               '.bbox': svg.Style(fill_opacity=0.0, stroke_width='2px')}))
 
 BBox = collections.namedtuple('BBox', ('x', 'y', 'w', 'h'))
 BBox.area = lambda self: self.w * self.h
@@ -68,8 +68,10 @@ def overlay(objs, colors, inference_time, inference_rate, layout):
 
         x, y, w, h = obj.bbox.scale(*layout.size)
         doc += svg.normal_text(caption, x, y - 5)
+        doc += svg.Rect(x=x + 1, y=y + 1, width=w, height=h, rx=2, ry=2,
+                        _class='bbox', style='stroke:black')
         doc += svg.Rect(x=x, y=y, width=w, height=h, rx=2, ry=2,
-                        style='stroke:%s' % colors[obj.id])
+                        _class='bbox', style='stroke:%s' % colors[obj.id])
 
     return str(doc)
 
