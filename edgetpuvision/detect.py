@@ -41,13 +41,20 @@ Object.__str__ = lambda self: 'Object(id=%d, label=%s, score=%.2f, %s)' % self
 def color(i, total):
     return tuple(int(255.0 * c) for c in colorsys.hsv_to_rgb(i / total, 1.0, 1.0))
 
-def gen_colors_unique(keys):
+def make_palette(keys):
     return {key : svg.rgb(color(i, len(keys))) for i, key in enumerate(keys)}
 
-def gen_colors_single(keys, color):
-    return {key : color for key in keys}
+def make_get_color(color, labels):
+    if color:
+        return lambda obj_id: color
 
-def overlay(objs, colors, inference_time, inference_rate, layout):
+    if labels:
+        palette = make_palette(labels.keys())
+        return lambda obj_id: palette[obj_id]
+
+    return lambda obj_id: 'white'
+
+def overlay(objs, get_color, inference_time, inference_rate, layout):
     x0, y0, width, height = layout.window
 
     defs = svg.Defs()
@@ -71,7 +78,7 @@ def overlay(objs, colors, inference_time, inference_rate, layout):
         doc += svg.Rect(x=x + 1, y=y + 1, width=w, height=h, rx=2, ry=2,
                         _class='bbox', style='stroke:black')
         doc += svg.Rect(x=x, y=y, width=w, height=h, rx=2, ry=2,
-                        _class='bbox', style='stroke:%s' % colors[obj.id])
+                        _class='bbox', style='stroke:%s' % get_color(obj.id))
 
     ox, oy = x0 + 20, y0 + height - 20
 
@@ -111,10 +118,8 @@ def render_gen(args):
 
     labels = load_labels(args.labels) if args.labels else None
     filtered_labels = set(l.strip() for l in args.filter.split(',')) if args.filter else None
-    if args.color:
-        colors = gen_colors_single(labels.keys(), args.color)
-    else:
-        colors = gen_colors_unique(labels.keys())
+    get_color = make_get_color(args.color, labels)
+
     draw_overlay = True
 
     yield input_image_size(engine)
@@ -138,7 +143,7 @@ def render_gen(args):
             if args.print:
                 print_results(inference_rate, objs)
 
-            output = overlay(objs, colors, inference_time, inference_rate, layout)
+            output = overlay(objs, get_color, inference_time, inference_rate, layout)
         else:
             output = None
 
