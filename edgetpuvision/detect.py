@@ -24,7 +24,9 @@ from .apps import run_app
 from .utils import load_labels, input_image_size, same_input_image_sizes, avg_fps_counter
 
 CSS_STYLES = str(svg.CssStyle({'.txt': svg.Style(fill='white'),
-                               '.shd': svg.Style(fill='black', fill_opacity=0.6),
+                               '.back': svg.Style(fill='black',
+                                                  stroke='black',
+                                                  stroke_width='1em'),
                                '.bbox': svg.Style(fill_opacity=0.0, stroke_width='2px')}))
 
 BBox = collections.namedtuple('BBox', ('x', 'y', 'w', 'h'))
@@ -46,18 +48,15 @@ def gen_colors_single(keys, color):
     return {key : color for key in keys}
 
 def overlay(objs, colors, inference_time, inference_rate, layout):
-    x0, y0, w, h = layout.window
+    x0, y0, width, height = layout.window
 
     defs = svg.Defs()
     defs += CSS_STYLES
 
-    doc = svg.Svg(width=w, height=h, viewBox='%s %s %s %s' % layout.window, font_size='26px')
+    doc = svg.Svg(width=width, height=height,
+                  viewBox='%s %s %s %s' % layout.window,
+                  font_size='1em', font_family='sans-serif', font_weight=600)
     doc += defs
-    doc += svg.normal_text((
-        'Inference time: %.2f ms (%.2f fps)' % (inference_time * 1000, 1.0 / inference_time),
-        'Inference frame rate: %.2f fps' % inference_rate,
-        'Objects: %d' % len(objs),
-    ), x0 + 10, y0 + 10, font_size_em=1.1)
 
     for obj in objs:
         percent = int(100 * obj.score)
@@ -67,11 +66,25 @@ def overlay(objs, colors, inference_time, inference_rate, layout):
             caption = '%d%%' % percent
 
         x, y, w, h = obj.bbox.scale(*layout.size)
-        doc += svg.normal_text(caption, x, y - 5)
+
+        doc += svg.Text(caption, x=x, y=y - 5, _class='txt')
         doc += svg.Rect(x=x + 1, y=y + 1, width=w, height=h, rx=2, ry=2,
                         _class='bbox', style='stroke:black')
         doc += svg.Rect(x=x, y=y, width=w, height=h, rx=2, ry=2,
                         _class='bbox', style='stroke:%s' % colors[obj.id])
+
+    ox, oy = x0 + 20, y0 + height - 20
+
+    doc += svg.Rect(x=0, y=0, width='22em', height='2.2em',
+                    transform='translate(%s, %s) scale(1,-1)' % (ox, oy), _class='back')
+
+    t = svg.Text(y=oy, _class='txt')
+    t += svg.TSpan('Objects: %d' % len(objs),
+                   x=ox)
+    perf = inference_time * 1000, 1.0 / inference_time
+    t += svg.TSpan('Inference time: %.2f ms (%.2f fps)' % perf,
+                   x=ox, dy='-1.2em')
+    doc += t
 
     return str(doc)
 
