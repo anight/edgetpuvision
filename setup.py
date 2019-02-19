@@ -18,7 +18,6 @@ setup(
         'protobuf>=3.0.0',
         'edgetpu',
     ],
-    scripts=['bin/edgetpu_demo'],
     entry_points = {
         'console_scripts': ['edgetpu_classify=edgetpuvision.classify:main',
                             'edgetpu_classify_server=edgetpuvision.classify_server:main',
