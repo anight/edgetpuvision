@@ -62,6 +62,22 @@ def _shutdown(sock):
     except OSError:
         pass
 
+def _file_content_type(path):
+    if path.endswith('.html'):
+        return 'text/html; charset=utf-8'
+    elif path.endswith('.js'):
+        return 'text/javascript; charset=utf-8'
+    elif path.endswith('.css'):
+        return 'text/css; charset=utf-8'
+    elif path.endswith('.png'):
+        return'image/png'
+    elif path.endswith('.jpg') or path.endswith('.jpeg'):
+        return'image/jpeg'
+    elif path.endswith('.wasm'):
+        return'application/wasm'
+    else:
+        return 'application/octet-stream'
+
 def _read_asset(path):
     if path == '/':
         path = 'index.html'
@@ -74,18 +90,9 @@ def _read_asset(path):
     if os.path.commonpath((base_path, asset_path)) != base_path:
         return None, None
 
-    if path.endswith('.html'):
-        content_type = 'text/html; charset=utf-8'
-    elif path.endswith('.js'):
-        content_type = 'application/javascript; charset=utf-8'
-    elif path.endswith('.wasm'):
-        content_type = 'application/wasm'
-    else:
-        content_type = 'application/octet-stream'
-
     try:
         with open(asset_path, 'rb') as f:
-            return f.read(), content_type
+            return f.read(), _file_content_type(path)
     except Exception:
         return None, None
 
