@@ -46,9 +46,13 @@ class Display(enum.Enum):
     def __str__(self):
         return self.value
 
-def set_nonblocking(fd):
-    flags = fcntl.fcntl(fd, fcntl.F_GETFL)
-    return fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+@contextlib.contextmanager
+def nonblocking(fd):
+    os.set_blocking(fd, False)
+    try:
+        yield
+    finally:
+        os.set_blocking(fd, True)
 
 @contextlib.contextmanager
 def term_raw_mode(fd):
@@ -61,11 +65,28 @@ def term_raw_mode(fd):
     finally:
         termios.tcsetattr(fd, termios.TCSAFLUSH, old)
 
-def get_nowait(q):
-    try:
-        return q.get_nowait()
-    except queue.Empty:
-        return None
+@contextlib.contextmanager
+def Commands():
+    commands = queue.Queue()
+
+    def on_keypress(fd, flags):
+        for ch in sys.stdin.read():
+            commands.put(ch)
+        return True
+
+    def get_nowait():
+        try:
+            return commands.get_nowait()
+        except queue.Empty:
+            return None
+
+    if sys.stdin.isatty():
+        fd = sys.stdin.fileno()
+        GLib.io_add_watch(fd, GLib.IO_IN, on_keypress)
+        with term_raw_mode(fd), nonblocking(fd):
+            yield get_nowait
+    else:
+        yield lambda: None
 
 @contextlib.contextmanager
 def Worker(process, maxsize=0):
@@ -151,17 +172,12 @@ def on_bus_message(bus, message):
         sys.stderr.write('Error: %s: %s\n' % (err, debug))
         Gtk.main_quit()
 
-def on_keypress(fd, flags, commands):
-    for ch in sys.stdin.read():
-        commands.put(ch)
-    return True
-
-def on_new_sample(sink, pipeline, render_overlay, layout, images, commands):
+def on_new_sample(sink, pipeline, render_overlay, layout, images, get_command):
     with pull_sample(sink) as (sample, data):
         custom_command = None
         save_frame = False
 
-        command = get_nowait(commands)
+        command = get_command()
         if command == COMMAND_SAVE_FRAME:
             save_frame = True
         elif command == COMMAND_PRINT_INFO:
@@ -241,7 +257,6 @@ def quit():
 
 def run_pipeline(pipeline, layout, render_overlay, display, signals=None):
     signals = signals or {}
-    commands = queue.Queue()
 
     # Create pipeline
     pipeline = describe(pipeline)
@@ -281,20 +296,13 @@ def run_pipeline(pipeline, layout, render_overlay, display, signals=None):
         window.connect('delete-event', Gtk.main_quit)
         window.show_all()
 
-    with contextlib.ExitStack() as stack:
-        images = stack.enter_context(Worker(save_frame))
-
-        if sys.stdin.isatty():
-            set_nonblocking(sys.stdin.fileno())
-            GLib.io_add_watch(sys.stdin.fileno(), GLib.IO_IN, on_keypress, commands)
-            stack.enter_context(term_raw_mode(sys.stdin.fileno()))
-
+    with Worker(save_frame) as images, Commands() as get_command:
         signals = {'appsink':
             {'new-sample': functools.partial(on_new_sample,
                 render_overlay=functools.partial(render_overlay, layout=layout),
                 layout=layout,
                 images=images,
-                commands=commands)},
+                get_command=get_command)},
             **signals
         }
 
