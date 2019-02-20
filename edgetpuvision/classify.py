@@ -14,8 +14,8 @@ import time
 from edgetpu.classification.engine import ClassificationEngine
 
 from . import svg
+from . import utils
 from .apps import run_app
-from .utils import load_labels, input_image_size, same_input_image_sizes, avg_fps_counter
 
 
 CSS_STYLES = str(svg.CssStyle({'.back': svg.Style(fill='black',
@@ -94,17 +94,17 @@ def render_gen(args):
     acc = accumulator(size=args.window, top_k=args.top_k)
     acc.send(None)  # Initialize.
 
-    fps_counter=avg_fps_counter(30)
+    fps_counter = utils.avg_fps_counter(30)
 
-    engines = [ClassificationEngine(m) for m in args.model.split(',')]
-    assert same_input_image_sizes(engines)
+    engines, titles = utils.make_engines(args.model, ClassificationEngine)
+    assert utils.same_input_image_sizes(engines)
     engines = itertools.cycle(engines)
     engine = next(engines)
 
-    labels = load_labels(args.labels)
+    labels = utils.load_labels(args.labels)
     draw_overlay = True
 
-    yield input_image_size(engine)
+    yield utils.input_image_size(engine)
 
     output = None
     while True:
@@ -121,7 +121,8 @@ def render_gen(args):
             if args.print:
                 print_results(inference_rate, results)
 
-            output = overlay(None, results, inference_time, inference_rate, layout)
+            title = titles[engine]
+            output = overlay(title, results, inference_time, inference_rate, layout)
         else:
             output = None
 

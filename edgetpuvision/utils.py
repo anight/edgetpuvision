@@ -1,4 +1,5 @@
 import collections
+import os
 import re
 import time
 
@@ -27,3 +28,15 @@ def avg_fps_counter(window_size):
         window.append(curr - prev)
         prev = curr
         yield len(window) / sum(window)
+
+def make_engines(models, engine_class):
+    engines, titles = [], {}
+    for model in models.split(','):
+        if '@' in model:
+            model_path, title = model.split('@')
+        else:
+            model_path, title = model, os.path.basename(os.path.normpath(model))
+        engine = engine_class(model_path)
+        engines.append(engine)
+        titles[engine] = title
+    return engines, titles

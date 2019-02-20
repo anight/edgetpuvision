@@ -20,8 +20,8 @@ import time
 from edgetpu.detection.engine import DetectionEngine
 
 from . import svg
+from . import utils
 from .apps import run_app
-from .utils import load_labels, input_image_size, same_input_image_sizes, avg_fps_counter
 
 CSS_STYLES = str(svg.CssStyle({'.back': svg.Style(fill='black',
                                                   stroke='black',
@@ -127,20 +127,20 @@ def print_results(inference_rate, objs):
         print('    %d: %s, area=%.2f' % (i, obj, obj.bbox.area()))
 
 def render_gen(args):
-    fps_counter=avg_fps_counter(30)
+    fps_counter  = utils.avg_fps_counter(30)
 
-    engines = [DetectionEngine(m) for m in args.model.split(',')]
-    assert same_input_image_sizes(engines)
+    engines, titles = utils.make_engines(args.model, DetectionEngine)
+    assert utils.same_input_image_sizes(engines)
     engines = itertools.cycle(engines)
     engine = next(engines)
 
-    labels = load_labels(args.labels) if args.labels else None
+    labels = utils.load_labels(args.labels) if args.labels else None
     filtered_labels = set(l.strip() for l in args.filter.split(',')) if args.filter else None
     get_color = make_get_color(args.color, labels)
 
     draw_overlay = True
 
-    yield input_image_size(engine)
+    yield utils.input_image_size(engine)
 
     output = None
     while True:
@@ -149,7 +149,7 @@ def render_gen(args):
         inference_rate = next(fps_counter)
         if draw_overlay:
             start = time.monotonic()
-            objs = engine.DetectWithInputTensor(tensor, threshold=args.threshold, top_k=args.top_k)
+            objs = engine .DetectWithInputTensor(tensor, threshold=args.threshold, top_k=args.top_k)
             inference_time = time.monotonic() - start
             objs = [convert(obj, labels) for obj in objs]
 
@@ -161,7 +161,8 @@ def render_gen(args):
             if args.print:
                 print_results(inference_rate, objs)
 
-            output = overlay(None, objs, get_color, inference_time, inference_rate, layout)
+            title = titles[engine]
+            output = overlay(title, objs, get_color, inference_time, inference_rate, layout)
         else:
             output = None
 
