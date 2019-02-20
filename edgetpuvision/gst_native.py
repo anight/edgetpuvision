@@ -72,7 +72,7 @@ librsvg.rsvg_handle_render_cairo.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
 librsvg.rsvg_handle_close.restype = ctypes.c_bool
 librsvg.rsvg_handle_close.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
 
-libgobject = ctypes.CDLL('libgobject-2.0.so')
+libgobject = ctypes.CDLL('libgobject-2.0.so.0')
 libgobject.g_object_unref.restype = None
 libgobject.g_object_unref.argtypes = [ctypes.c_void_p]
 
