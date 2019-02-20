@@ -10,7 +10,6 @@ class Camera:
     def __init__(self, render_size, inference_size):
         self._layout = gstreamer.make_layout(inference_size, render_size)
 
-        self._loop = gstreamer.loop()
         self._thread = None
         self.render_overlay = None
 
@@ -36,12 +35,13 @@ class Camera:
 
         pipeline = self.make_pipeline(format, profile, inline_headers, bitrate, intra_period)
 
-        self._thread = threading.Thread(target=gstreamer.run_loop,
-                                        args=(self._loop, pipeline, self._layout, render_overlay, signals))
+        self._thread = threading.Thread(target=gstreamer.run_pipeline,
+                                        args=(pipeline, self._layout, render_overlay,
+                                              gstreamer.Display.NONE, signals))
         self._thread.start()
 
     def stop_recording(self):
-        self._loop.quit()
+        gstreamer.quit()
         self._thread.join()
 
     def make_pipeline(self, fmt, profile, inline_headers, bitrate, intra_period):

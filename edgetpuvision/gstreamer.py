@@ -6,6 +6,7 @@ import functools
 import os
 import pathlib
 import queue
+import signal
 import sys
 import termios
 import threading
@@ -14,22 +15,23 @@ import time
 import numpy as np
 
 import gi
+gi.require_version('Gtk', '3.0')
 gi.require_version('GLib', '2.0')
 gi.require_version('GObject', '2.0')
 gi.require_version('Gst', '1.0')
 gi.require_version('GstBase', '1.0')
 gi.require_version('GstPbutils', '1.0')
-
-from gi.repository import GLib, GObject, Gst, GstBase
+from gi.repository import GLib, GObject, Gst, GstBase, Gtk
 
 GObject.threads_init()
-Gst.init(None)
+Gst.init([])
+Gtk.init([])
 
 from gi.repository import GstPbutils  # Must be called after Gst.init().
 
 from PIL import Image
 
-from .gst import *
+from .gst_native import set_display_contexts
 from .pipelines import *
 
 COMMAND_SAVE_FRAME = ' '
@@ -121,9 +123,6 @@ def get_video_info(filename):
     assert len(streams) == 1
     return streams[0]
 
-def loop():
-    return GLib.MainLoop()
-
 @contextlib.contextmanager
 def pull_sample(sink):
     sample = sink.emit('pull-sample')
@@ -135,61 +134,29 @@ def pull_sample(sink):
     buf.unmap(mapinfo)
 
 def new_sample_callback(process):
-    def callback(sink, pipeline, loop):
+    def callback(sink, pipeline):
         with pull_sample(sink) as (sample, data):
             process(data, caps_size(sample.get_caps()))
         return Gst.FlowReturn.OK
     return callback
 
-def on_bus_message(bus, message, loop):
+def on_bus_message(bus, message):
     if message.type == Gst.MessageType.EOS:
-        loop.quit()
+        Gtk.main_quit()
     elif message.type == Gst.MessageType.WARNING:
         err, debug = message.parse_warning()
         sys.stderr.write('Warning: %s: %s\n' % (err, debug))
     elif message.type == Gst.MessageType.ERROR:
         err, debug = message.parse_error()
         sys.stderr.write('Error: %s: %s\n' % (err, debug))
-        loop.quit()
-    return True
-
-def run_pipeline(loop, pipeline, signals):
-    # Create pipeline
-    pipeline = describe(pipeline)
-    print(pipeline)
-    pipeline = Gst.parse_launch(pipeline)
-
-    # Attach signals
-    for name, signals in signals.items():
-        component = pipeline.get_by_name(name)
-        if component:
-            for signal_name, signal_handler in signals.items():
-                component.connect(signal_name, signal_handler, pipeline, loop)
-
-    # Set up a pipeline bus watch to catch errors.
-    bus = pipeline.get_bus()
-    bus.add_signal_watch()
-    bus.connect('message', on_bus_message, loop)
-
-    # Run pipeline.
-    pipeline.set_state(Gst.State.PLAYING)
-    try:
-        loop.run()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        pipeline.set_state(Gst.State.NULL)
-
-    # Process all pending operations on the loop.
-    while loop.get_context().iteration(False):
-        pass
+        Gtk.main_quit()
 
 def on_keypress(fd, flags, commands):
     for ch in sys.stdin.read():
         commands.put(ch)
     return True
 
-def on_new_sample(sink, pipeline, loop, render_overlay, layout, images, commands):
+def on_new_sample(sink, pipeline, render_overlay, layout, images, commands):
     with pull_sample(sink) as (sample, data):
         custom_command = None
         save_frame = False
@@ -202,7 +169,7 @@ def on_new_sample(sink, pipeline, loop, render_overlay, layout, images, commands
             print('Render size: %d x %d' % layout.render_size)
             print('Inference size: %d x %d' % layout.inference_size)
         elif  command == COMMAND_QUIT:
-            loop.quit()
+            Gtk.main_quit()
         else:
             custom_command = command
 
@@ -210,7 +177,7 @@ def on_new_sample(sink, pipeline, loop, render_overlay, layout, images, commands
                              command=custom_command)
         overlay = pipeline.get_by_name('overlay')
         if overlay:
-            overlay.set_property('data', svg)
+            overlay.set_svg(svg, layout.render_size)
 
         if save_frame:
             images.put((data, layout.inference_size, svg))
@@ -230,7 +197,7 @@ def run(inference_size, render_overlay, *, source, downscale, display):
     result = get_pipeline(source, inference_size, downscale, display)
     if result:
         layout, pipeline = result
-        run_loop(loop(), pipeline, layout, render_overlay)
+        run_pipeline(pipeline, layout, render_overlay, display)
         return True
 
     return False
@@ -254,7 +221,7 @@ def camera_pipeline(fmt, layout, display):
     if display is Display.NONE:
         return camera_headless_pipeline(fmt, layout)
     else:
-        return camera_display_pipeline(fmt, layout, display is Display.FULLSCREEN)
+        return camera_display_pipeline(fmt, layout)
 
 def file_pipline(is_image, filename, layout, display):
     if display is Display.NONE:
@@ -265,13 +232,54 @@ def file_pipline(is_image, filename, layout, display):
     else:
         fullscreen = display is Display.FULLSCREEN
         if is_image:
-            return image_display_pipeline(filename, layout, fullscreen)
+            return image_display_pipeline(filename, layout)
         else:
-            return video_display_pipeline(filename, layout, fullscreen)
+            return video_display_pipeline(filename, layout)
 
-def run_loop(loop, pipeline, layout, render_overlay, signals=None):
+def quit():
+    Gtk.main_quit()
+
+def run_pipeline(pipeline, layout, render_overlay, display, signals=None):
     signals = signals or {}
     commands = queue.Queue()
+
+    # Create pipeline
+    pipeline = describe(pipeline)
+    print(pipeline)
+    pipeline = Gst.parse_launch(pipeline)
+
+    if display is not Display.NONE:
+        # Workaround for https://gitlab.gnome.org/GNOME/gtk/issues/844 in gtk3 < 3.24.
+        widget_draws = 123
+        def on_widget_draw(widget, cairo):
+            nonlocal widget_draws
+            if widget_draws:
+                 widget.queue_draw()
+                 widget_draws -= 1
+            return False
+
+        # Needed to account for window chrome etc.
+        def on_widget_configure(widget, event, glsink):
+            allocation = widget.get_allocation()
+            glsink.set_render_rectangle(allocation.x, allocation.y,
+                    allocation.width, allocation.height)
+            return False
+
+        window = Gtk.Window(Gtk.WindowType.TOPLEVEL)
+        window.set_default_size(layout.render_size.width, layout.render_size.height)
+        if display is Display.FULLSCREEN:
+            window.fullscreen()
+
+        drawing_area = Gtk.DrawingArea()
+        window.add(drawing_area)
+        drawing_area.realize()
+
+        glsink = pipeline.get_by_name('glsink')
+        set_display_contexts(glsink, drawing_area)
+        drawing_area.connect('draw', on_widget_draw)
+        drawing_area.connect('configure-event', on_widget_configure, glsink)
+        window.connect('delete-event', Gtk.main_quit)
+        window.show_all()
 
     with contextlib.ExitStack() as stack:
         images = stack.enter_context(Worker(save_frame))
@@ -281,11 +289,36 @@ def run_loop(loop, pipeline, layout, render_overlay, signals=None):
             GLib.io_add_watch(sys.stdin.fileno(), GLib.IO_IN, on_keypress, commands)
             stack.enter_context(term_raw_mode(sys.stdin.fileno()))
 
-        run_pipeline(loop, pipeline, {'appsink':
+        signals = {'appsink':
             {'new-sample': functools.partial(on_new_sample,
                 render_overlay=functools.partial(render_overlay, layout=layout),
                 layout=layout,
                 images=images,
                 commands=commands)},
             **signals
-        })
+        }
+
+        for name, signals in signals.items():
+            component = pipeline.get_by_name(name)
+            if component:
+                for signal_name, signal_handler in signals.items():
+                    component.connect(signal_name, signal_handler, pipeline)
+
+        # Set up a pipeline bus watch to catch errors.
+        bus = pipeline.get_bus()
+        bus.add_signal_watch()
+        bus.connect('message', on_bus_message)
+
+        # Run pipeline.
+        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, Gtk.main_quit)
+        pipeline.set_state(Gst.State.PLAYING)
+        try:
+            Gtk.main()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            pipeline.set_state(Gst.State.NULL)
+
+        # Process all pending MainContext operations.
+        while GLib.MainContext.default().iteration(False):
+            pass

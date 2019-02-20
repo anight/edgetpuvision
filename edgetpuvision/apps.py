@@ -43,7 +43,7 @@ def run_app(add_render_gen_args, render_gen):
                         default='/dev/video0:YUY2:1280x720:30/1')
     parser.add_argument('--downscale', type=float, default=2.0,
                         help='Downscale factor for .mp4 file rendering')
-    parser.add_argument('--display', type=Display, choices=Display, default=Display.FULLSCREEN,
+    parser.add_argument('--displaymode', type=Display, choices=Display, default=Display.FULLSCREEN,
                         help='Display mode')
     add_render_gen_args(parser)
     args = parser.parse_args()
@@ -51,5 +51,5 @@ def run_app(add_render_gen_args, render_gen):
     if not run_gen(render_gen(args),
                    source=args.source,
                    downscale=args.downscale,
-                   display=args.display):
+                   display=args.displaymode):
         print('Invalid source argument:', args.source)
