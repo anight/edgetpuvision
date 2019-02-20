@@ -7,24 +7,6 @@ def _clean(k):
 def rgb(color):
     return 'rgb(%s, %s, %s)' % color
 
-def em(value):
-    return '%sem' % value
-
-def px(value):
-    return '%spx' % value
-
-def pt(value):
-    return '%spt' % value
-
-def mm(value):
-    return '%smm' % value
-
-def cm(value):
-    return '%scm' % value
-
-def inch(value):
-    return '%sin' % value
-
 class Style:
     def __init__(self, **attrs):
         self._attrs = attrs
@@ -143,36 +125,3 @@ class CssStyle(Tag):
     @property
     def value(self):
         return '<![CDATA[%s]]>' % '\n'.join('%s {%s}' % (k, v) for k, v in self._styles.items())
-
-
-
-def shadow_text(arg, x, y, font_size_em=1.0, text_class='txt', shadow_class='shd'):
-    lines = arg.split('\n') if isinstance(arg, str) else arg
-    g = Group()
-    if len(lines) == 1:
-        g += Text(lines[0], x=x, y=y, dx=1, dy=1, _class=shadow_class, font_size=em(font_size_em))
-        g += Text(lines[0], x=x, y=y, _class=text_class, font_size=em(font_size_em))
-    elif len(lines) > 1:
-        t = Text(y=y, dy=1, _class=shadow_class, font_size=em(font_size_em))
-        for line in lines:
-            t += TSpan(line, x=x, dx=1, dy=em(1.0))
-        g += t
-
-        t = Text(y=y, _class=text_class, font_size=em(font_size_em))
-        for line in lines:
-            t += TSpan(line, x=x, dy=em(1.0))
-        g += t
-    return g
-
-def normal_text(arg, x, y, font_size_em=1.0, text_class='txt'):
-    lines = arg.split('\n') if isinstance(arg, str) else arg
-
-    if len(lines) == 1:
-        return Text(lines[0], x=x, y=y, _class=text_class, font_size=em(font_size_em))
-    elif len(lines) > 1:
-        t = Text(y=y, _class='txt', font_size=em(font_size_em))
-        for line in lines:
-            t += TSpan(line, x=x, dy=em(1.0))
-        return t
-    else:
-        raise ValueError('No text lines')

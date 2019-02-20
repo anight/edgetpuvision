@@ -18,26 +18,57 @@ from .apps import run_app
 from .utils import load_labels, input_image_size, same_input_image_sizes, avg_fps_counter
 
 
-CSS_STYLES = str(svg.CssStyle({'.txt': svg.Style(fill='white'),
-                               '.shd': svg.Style(fill='black', fill_opacity=0.6)}))
+CSS_STYLES = str(svg.CssStyle({'.back': svg.Style(fill='black',
+                                                  stroke='black',
+                                                  stroke_width='1em')}))
 
-def overlay(results, inference_time, inference_rate, layout):
-    x0, y0, w, h = layout.window
+def size_em(length):
+    return '%sem' % str(0.6 * length)
 
-    lines = [
-        'Inference time: %.2f ms (%.2f fps)' % (inference_time * 1000, 1.0 / inference_time),
-        'Inference frame rate: %.2f fps' % inference_rate
-    ]
-
-    for i, (label, score) in enumerate(results):
-        lines.append('%s (%.2f)' % (label, score))
+def overlay(title, results, inference_time, inference_rate, layout):
+    x0, y0, width, height = layout.window
 
     defs = svg.Defs()
     defs += CSS_STYLES
 
-    doc = svg.Svg(width=w, height=h, viewBox='%s %s %s %s' % layout.window, font_size='26px')
+    doc = svg.Svg(width=width, height=height,
+                  viewBox='%s %s %s %s' % layout.window,
+                  font_size='1em', font_family='monospace', font_weight=500)
     doc += defs
-    doc += svg.normal_text(lines, x=x0 + 10, y=y0 + 10, font_size_em=1.1)
+
+    ox1, ox2 = x0 + 20, x0 + width - 20
+    oy1, oy2 = y0 + 20, y0 + height - 20
+
+    # Classes
+    lines = ['%s (%.2f)' % pair for pair in results]
+    if lines:
+        text_width = size_em(max(len(line) for line in lines))
+        text_height = '%sem' % len(lines)
+        doc += svg.Rect(x=0, y=0, width=text_width, height=text_height,
+                        transform='translate(%s, %s) scale(-1,-1)' % (ox2, oy2),
+                        _class='back')
+        t = svg.Text(y=oy2, fill='white', text_anchor='end')
+        for i, line in enumerate(lines):
+            dy = '-1em' if i > 0 else '0em'
+            t += svg.TSpan(line, x=ox2, dy=dy)
+        doc += t
+
+    # Title
+    if title:
+        doc += svg.Rect(x=ox1, y=oy1,
+                        width=size_em(len(title)), height='1em',
+                        _class='back')
+        t = svg.Text(x=ox1, y=oy1, fill='white')
+        t += svg.TSpan(title, dy='1em')
+        doc +=t
+
+    # Info
+    line = 'Inference time: %.2f ms (%.2f fps)' % (inference_time * 1000, 1.0 / inference_time)
+    doc += svg.Rect(x=0, y=0, width=size_em(len(line)), height='1em',
+                    transform='translate(%s, %s) scale(1,-1)' % (ox1, oy2),
+                    _class='back')
+    doc += svg.Text(line, x=ox1, y=oy2, fill='white')
+
     return str(doc)
 
 def top_results(window, top_k):
@@ -90,7 +121,7 @@ def render_gen(args):
             if args.print:
                 print_results(inference_rate, results)
 
-            output = overlay(results, inference_time, inference_rate, layout)
+            output = overlay(None, results, inference_time, inference_rate, layout)
         else:
             output = None
 
