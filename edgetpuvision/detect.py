@@ -23,11 +23,11 @@ from . import svg
 from .apps import run_app
 from .utils import load_labels, input_image_size, same_input_image_sizes, avg_fps_counter
 
-CSS_STYLES = str(svg.CssStyle({'.txt': svg.Style(fill='white'),
-                               '.back': svg.Style(fill='black',
+CSS_STYLES = str(svg.CssStyle({'.back': svg.Style(fill='black',
                                                   stroke='black',
                                                   stroke_width='1em'),
-                               '.bbox': svg.Style(fill_opacity=0.0, stroke_width='2px')}))
+                               '.bbox': svg.Style(fill_opacity=0.0,
+                                                  stroke_width='2px')}))
 
 BBox = collections.namedtuple('BBox', ('x', 'y', 'w', 'h'))
 BBox.area = lambda self: self.w * self.h
@@ -37,6 +37,9 @@ BBox.__str__ = lambda self: 'BBox(x=%.2f y=%.2f w=%.2f h=%.2f)' % self
 
 Object = collections.namedtuple('Object', ('id', 'label', 'score', 'bbox'))
 Object.__str__ = lambda self: 'Object(id=%d, label=%s, score=%.2f, %s)' % self
+
+def size_em(length):
+    return '%sem' % str(0.6 * length)
 
 def color(i, total):
     return tuple(int(255.0 * c) for c in colorsys.hsv_to_rgb(i / total, 1.0, 1.0))
@@ -54,7 +57,7 @@ def make_get_color(color, labels):
 
     return lambda obj_id: 'white'
 
-def overlay(objs, get_color, inference_time, inference_rate, layout):
+def overlay(title, objs, get_color, inference_time, inference_rate, layout):
     x0, y0, width, height = layout.window
 
     defs = svg.Defs()
@@ -62,7 +65,7 @@ def overlay(objs, get_color, inference_time, inference_rate, layout):
 
     doc = svg.Svg(width=width, height=height,
                   viewBox='%s %s %s %s' % layout.window,
-                  font_size='1em', font_family='sans-serif', font_weight=600)
+                  font_size='1em', font_family='monospace', font_weight=500)
     doc += defs
 
     for obj in objs:
@@ -73,24 +76,39 @@ def overlay(objs, get_color, inference_time, inference_rate, layout):
             caption = '%d%%' % percent
 
         x, y, w, h = obj.bbox.scale(*layout.size)
+        color = get_color(obj.id)
 
-        doc += svg.Text(caption, x=x, y=y - 5, _class='txt')
-        doc += svg.Rect(x=x + 1, y=y + 1, width=w, height=h, rx=2, ry=2,
-                        _class='bbox', style='stroke:black')
-        doc += svg.Rect(x=x, y=y, width=w, height=h, rx=2, ry=2,
-                        _class='bbox', style='stroke:%s' % get_color(obj.id))
+        doc += svg.Rect(x=x, y=y, width=w, height=h,
+                        style='stroke:%s' % color, _class='bbox')
+        doc += svg.Rect(x=x, y=y+h ,
+                        width=size_em(len(caption)), height='1.2em', fill=color)
+        t = svg.Text(x=x, y=y+h, fill='black')
+        t += svg.TSpan(caption, dy='1em')
+        doc += t
 
-    ox, oy = x0 + 20, y0 + height - 20
 
-    doc += svg.Rect(x=0, y=0, width='22em', height='2.2em',
-                    transform='translate(%s, %s) scale(1,-1)' % (ox, oy), _class='back')
+    ox, oy1, oy2 = x0 + 20, y0 + 20, y0 + height - 20
 
-    t = svg.Text(y=oy, _class='txt')
-    t += svg.TSpan('Objects: %d' % len(objs),
-                   x=ox)
-    perf = inference_time * 1000, 1.0 / inference_time
-    t += svg.TSpan('Inference time: %.2f ms (%.2f fps)' % perf,
-                   x=ox, dy='-1.2em')
+    # Title
+    if title:
+        doc += svg.Rect(x=ox, y=oy1,
+                        width=size_em(len(title)), height='1em',
+                        _class='back')
+        t = svg.Text(x=ox, y=oy1, fill='white')
+        t += svg.TSpan(title, dy='1em')
+        doc +=t
+
+    # Info
+    lines = [
+        'Objects: %d' % len(objs),
+        'Inference time: %.2f ms (%.2f fps)' % (inference_time * 1000, 1.0 / inference_time)
+    ]
+    text_width = size_em(max(len(line) for line in lines))
+    doc += svg.Rect(x=0, y=0, width=text_width, height='2.2em',
+                    transform='translate(%s, %s) scale(1,-1)' % (ox, oy2), _class='back')
+    t = svg.Text(y=oy2, fill='white')
+    t += svg.TSpan(lines[0], x=ox)
+    t += svg.TSpan(lines[1], x=ox, dy='-1.2em')
     doc += t
 
     return str(doc)
@@ -143,7 +161,7 @@ def render_gen(args):
             if args.print:
                 print_results(inference_rate, objs)
 
-            output = overlay(objs, get_color, inference_time, inference_rate, layout)
+            output = overlay(None, objs, get_color, inference_time, inference_rate, layout)
         else:
             output = None
 
