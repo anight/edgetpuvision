@@ -255,7 +255,7 @@ def file_pipline(is_image, filename, layout, display):
 def quit():
     Gtk.main_quit()
 
-def run_pipeline(pipeline, layout, render_overlay, display, signals=None):
+def run_pipeline(pipeline, layout, render_overlay, display, handle_sigint=True, signals=None):
     signals = signals or {}
 
     # Create pipeline
@@ -317,8 +317,11 @@ def run_pipeline(pipeline, layout, render_overlay, display, signals=None):
         bus.add_signal_watch()
         bus.connect('message', on_bus_message)
 
+        # Handle signals.
+        if handle_sigint:
+            GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, Gtk.main_quit)
+
         # Run pipeline.
-        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, Gtk.main_quit)
         pipeline.set_state(Gst.State.PLAYING)
         try:
             Gtk.main()

@@ -37,7 +37,7 @@ class Camera:
 
         self._thread = threading.Thread(target=gstreamer.run_pipeline,
                                         args=(pipeline, self._layout, render_overlay,
-                                              gstreamer.Display.NONE, signals))
+                                              gstreamer.Display.NONE, False, signals))
         self._thread.start()
 
     def stop_recording(self):
