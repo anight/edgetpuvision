@@ -78,23 +78,30 @@ def _file_content_type(path):
     else:
         return 'application/octet-stream'
 
-def _read_asset(path):
+BASE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), 'assets'))
+
+def _asset_path(path):
     if path == '/':
-        path = 'index.html'
+        value = os.environ.get('SERVER_INDEX_HTML')
+        if value is not None:
+            return value
+        path  = 'index.html'
     elif path[0] == '/':
         path = path[1:]
 
-    base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'assets'))
-    asset_path = os.path.abspath(os.path.join(base_path, path))
+    asset_path = os.path.abspath(os.path.join(BASE_PATH, path))
+    if os.path.commonpath((BASE_PATH, asset_path)) != BASE_PATH:
+        return None
 
-    if os.path.commonpath((base_path, asset_path)) != base_path:
-        return None, None
+    return asset_path
 
-    try:
-        with open(asset_path, 'rb') as f:
-            return f.read(), _file_content_type(path)
-    except Exception:
-        return None, None
+def _read_asset(path):
+    asset_path = _asset_path(path)
+    if asset_path is not None:
+        with contextlib.suppress(Exception):
+            with open(asset_path, 'rb') as f:
+                return f.read(), _file_content_type(asset_path)
+    return None, None
 
 
 class HTTPRequest(BaseHTTPRequestHandler):
