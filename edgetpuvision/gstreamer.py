@@ -145,6 +145,13 @@ def get_video_info(filename):
     assert len(streams) == 1
     return streams[0]
 
+def is_seekable(element):
+    query = Gst.Query.new_seeking(Gst.Format.TIME)
+    if element.query(query):
+        _,  seekable, _, _ = query.parse_seeking()
+        return seekable
+    return False
+
 @contextlib.contextmanager
 def pull_sample(sink):
     sample = sink.emit('pull-sample')
@@ -162,9 +169,14 @@ def new_sample_callback(process):
         return Gst.FlowReturn.OK
     return callback
 
-def on_bus_message(bus, message):
+def on_bus_message(bus, message, pipeline, loop):
     if message.type == Gst.MessageType.EOS:
-        Gtk.main_quit()
+        if loop and is_seekable(pipeline):
+            flags = Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT
+            if not pipeline.seek_simple(Gst.Format.TIME, flags, 0):
+                Gtk.main_quit()
+        else:
+            Gtk.main_quit()
     elif message.type == Gst.MessageType.WARNING:
         err, debug = message.parse_warning()
         sys.stderr.write('Warning: %s: %s\n' % (err, debug))
@@ -201,20 +213,21 @@ def on_new_sample(sink, pipeline, render_overlay, layout, images, get_command):
 
     return Gst.FlowReturn.OK
 
-def run_gen(render_overlay_gen, *, source, downscale, display):
+def run_gen(render_overlay_gen, *, source, downscale, loop, display):
     inference_size = render_overlay_gen.send(None)  # Initialize.
     return run(inference_size,
         lambda tensor, layout, command:
             render_overlay_gen.send((tensor, layout, command)),
         source=source,
         downscale=downscale,
+        loop=loop,
         display=display)
 
-def run(inference_size, render_overlay, *, source, downscale, display):
+def run(inference_size, render_overlay, *, source, downscale, loop, display):
     result = get_pipeline(source, inference_size, downscale, display)
     if result:
         layout, pipeline = result
-        run_pipeline(pipeline, layout, render_overlay, display)
+        run_pipeline(pipeline, layout, loop, render_overlay, display)
         return True
 
     return False
@@ -256,9 +269,7 @@ def file_pipline(is_image, filename, layout, display):
 def quit():
     Gtk.main_quit()
 
-def run_pipeline(pipeline, layout, render_overlay, display, handle_sigint=True, signals=None):
-    signals = signals or {}
-
+def run_pipeline(pipeline, layout, loop, render_overlay, display, handle_sigint=True, signals=None):
     # Create pipeline
     pipeline = describe(pipeline)
     print(pipeline)
@@ -305,7 +316,7 @@ def run_pipeline(pipeline, layout, render_overlay, display, handle_sigint=True, 
                 layout=layout,
                 images=images,
                 get_command=get_command)},
-            **signals
+            **(signals or {})
         }
 
         for name, signals in signals.items():
@@ -317,7 +328,7 @@ def run_pipeline(pipeline, layout, render_overlay, display, handle_sigint=True, 
         # Set up a pipeline bus watch to catch errors.
         bus = pipeline.get_bus()
         bus.add_signal_watch()
-        bus.connect('message', on_bus_message)
+        bus.connect('message', on_bus_message, pipeline, loop)
 
         # Handle signals.
         if handle_sigint:

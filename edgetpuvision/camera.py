@@ -7,9 +7,9 @@ from . import pipelines
 from .gst import *
 
 class Camera:
-    def __init__(self, render_size, inference_size):
+    def __init__(self, render_size, inference_size, loop):
         self._layout = gstreamer.make_layout(inference_size, render_size)
-
+        self._loop = loop
         self._thread = None
         self.render_overlay = None
 
@@ -36,8 +36,9 @@ class Camera:
         pipeline = self.make_pipeline(format, profile, inline_headers, bitrate, intra_period)
 
         self._thread = threading.Thread(target=gstreamer.run_pipeline,
-                                        args=(pipeline, self._layout, render_overlay,
-                                              gstreamer.Display.NONE, False, signals))
+                                        args=(pipeline, self._layout, self._loop,
+                                              render_overlay, gstreamer.Display.NONE,
+                                              False, signals))
         self._thread.start()
 
     def stop_recording(self):
@@ -48,29 +49,30 @@ class Camera:
         raise NotImplemented
 
 class FileCamera(Camera):
-    def __init__(self, filename, inference_size):
+    def __init__(self, filename, inference_size, loop):
         info = gstreamer.get_video_info(filename)
-        super().__init__((info.get_width(), info.get_height()), inference_size)
+        super().__init__((info.get_width(), info.get_height()), inference_size,
+                          loop=loop)
         self._filename = filename
 
     def make_pipeline(self, fmt, profile, inline_headers, bitrate, intra_period):
         return pipelines.video_streaming_pipeline(self._filename, self._layout)
 
-class V4L2Camera(Camera):
+class DeviceCamera(Camera):
     def __init__(self, fmt, inference_size):
-        super().__init__(fmt.size, inference_size)
+        super().__init__(fmt.size, inference_size, loop=False)
         self._fmt = fmt
 
     def make_pipeline(self, fmt, profile, inline_headers, bitrate, intra_period):
         return pipelines.camera_streaming_pipeline(self._fmt, profile, bitrate, self._layout)
 
-def make_camera(source, inference_size):
+def make_camera(source, inference_size, loop):
     fmt = parse_format(source)
     if fmt:
-        return V4L2Camera(fmt, inference_size)
+        return DeviceCamera(fmt, inference_size)
 
     filename = os.path.expanduser(source)
     if os.path.isfile(filename):
-        return FileCamera(filename, inference_size)
+        return FileCamera(filename, inference_size, loop)
 
     return None
