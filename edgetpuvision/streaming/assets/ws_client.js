@@ -35,39 +35,6 @@ function createPlayer(width, height, streamControl) {
   canvas.height = height;
   container.appendChild(canvas);
 
-  var top = (height + 10) + "px";
-
-  var startButton = document.createElement("button");
-  startButton.style.position = "relative";
-  startButton.style.top = top;
-  startButton.style.marginRight = "10px"
-  startButton.innerHTML = "Start"
-  startButton.onclick = function() {
-    console.log('Start clicked!')
-    streamControl(true);
-  }
-  container.appendChild(startButton);
-
-  var stopButton = document.createElement("button");
-  stopButton.style.position = "relative";
-  stopButton.style.top = top;
-  stopButton.style.marginRight = "10px"
-  stopButton.innerHTML = "Stop"
-  stopButton.onclick = function() {
-    console.log('Stop clicked!')
-    streamControl(false);
-  }
-  container.appendChild(stopButton);
-
-  var licenseLink = document.createElement("a");
-  licenseLink.appendChild(document.createTextNode("Open source licenses"));
-  licenseLink.title = "LICENSE";
-  licenseLink.href = "broadway/LICENSE";
-  licenseLink.target= "_blank";
-  licenseLink.style.position = "relative";
-  licenseLink.style.top = top;
-  container.appendChild(licenseLink);
-
   return player
 }
 
