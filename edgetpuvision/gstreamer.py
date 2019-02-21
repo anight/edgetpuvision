@@ -37,6 +37,7 @@ from .pipelines import *
 COMMAND_SAVE_FRAME = ' '
 COMMAND_PRINT_INFO = 'p'
 COMMAND_QUIT       = 'q'
+WINDOW_TITLE       = 'Coral'
 
 class Display(enum.Enum):
     FULLSCREEN = 'fullscreen'
@@ -281,6 +282,7 @@ def run_pipeline(pipeline, layout, render_overlay, display, handle_sigint=True, 
             return False
 
         window = Gtk.Window(Gtk.WindowType.TOPLEVEL)
+        window.set_title(WINDOW_TITLE)
         window.set_default_size(layout.render_size.width, layout.render_size.height)
         if display is Display.FULLSCREEN:
             window.fullscreen()
