@@ -1,3 +1,42 @@
+edgetpuvision (1.3-1) mendel-beaker; urgency=medium
+
+  * Add --loop command line parameter for video.
+  * Get rid of start/stop buttons in web UI.
+  * Set window title to 'Coral'
+  * Add parameter to disable SIGINT handling from run_pipeline().
+  * Add env var to override index.html file location.
+  * Set stdin back to blocking state on exit.
+  * Set default streaming resolution to 640x480.
+  * Fix missing dependencies.
+  * Upload rendered overlays as textures and display with glimagesink.
+  * Display model title in overlay.
+  * Update classification overlay rendering.
+  * Remove demo script from edgetpuvision.
+  * Use monospace font to calculate label backround rects.
+  * Add Coral logo, fonts, and initial css style.
+  * Bug fix: use white color when labels file is not specified.
+  * Move info to the bottom left corner on black background.
+  * Add shadow to bounding boxes.
+  * Add custom bbox color command line parameter.
+  * Make server scripts functionally compatible with console ones.
+  * Making pipeline code more reusable.
+  * Use different colors for different detected objects.
+  * Add convenient object representation for detection.
+  * Add --bitrate command line param.
+  * Simplify code that renders gstreamer pipelines.
+  * Remove code redundancy and group some params together.
+  * Get rid of explicit use of vpudec filter.
+  * Add correct favicon and change web page title.
+  * Support relative filenames and paths with spaces.
+  * Add width and height values to generated SVGs.
+  * Reuse inference code in streaming server.
+  * Add headless gstreamer pipelines.
+  * Add bounding box area filtering.
+  * Move gstreamer pipelines into a separate file.
+  * Fix problem with using JPEG images as a source.
+
+ -- AIY Projects <support-aiyprojects@google.com>  Fri, 22 Feb 2019 13:56:05 -0800
+
 edgetpuvision (1.2-1) mendel-beaker; urgency=medium
 
   * Update command line examples and help strings.
