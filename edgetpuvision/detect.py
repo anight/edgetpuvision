@@ -25,9 +25,9 @@ from .apps import run_app
 
 CSS_STYLES = str(svg.CssStyle({'.back': svg.Style(fill='black',
                                                   stroke='black',
-                                                  stroke_width='1em'),
+                                                  stroke_width='0.5em'),
                                '.bbox': svg.Style(fill_opacity=0.0,
-                                                  stroke_width='2px')}))
+                                                  stroke_width='0.1em')}))
 
 BBox = collections.namedtuple('BBox', ('x', 'y', 'w', 'h'))
 BBox.area = lambda self: self.w * self.h
@@ -59,13 +59,14 @@ def make_get_color(color, labels):
 
 def overlay(title, objs, get_color, inference_time, inference_rate, layout):
     x0, y0, width, height = layout.window
+    font_size = 0.03 * height
 
     defs = svg.Defs()
     defs += CSS_STYLES
 
     doc = svg.Svg(width=width, height=height,
                   viewBox='%s %s %s %s' % layout.window,
-                  font_size='1em', font_family='monospace', font_weight=500)
+                  font_size=font_size, font_family='monospace', font_weight=500)
     doc += defs
 
     for obj in objs:
@@ -86,30 +87,26 @@ def overlay(title, objs, get_color, inference_time, inference_rate, layout):
         t += svg.TSpan(caption, dy='1em')
         doc += t
 
-
-    ox, oy1, oy2 = x0 + 20, y0 + 20, y0 + height - 20
+    ox = x0 + 20
+    oy1, oy2 = y0 + 20 + font_size, y0 + height - 20
 
     # Title
     if title:
-        doc += svg.Rect(x=ox, y=oy1,
-                        width=size_em(len(title)), height='1em',
-                        _class='back')
-        t = svg.Text(x=ox, y=oy1, fill='white')
-        t += svg.TSpan(title, dy='1em')
-        doc +=t
+        doc += svg.Rect(x=0, y=0, width=size_em(len(title)), height='1em',
+                        transform='translate(%s, %s) scale(1,-1)' % (ox, oy1), _class='back')
+        doc += svg.Text(title, x=ox, y=oy1, fill='white')
 
     # Info
     lines = [
         'Objects: %d' % len(objs),
         'Inference time: %.2f ms (%.2f fps)' % (inference_time * 1000, 1.0 / inference_time)
     ]
-    text_width = size_em(max(len(line) for line in lines))
-    doc += svg.Rect(x=0, y=0, width=text_width, height='2.2em',
-                    transform='translate(%s, %s) scale(1,-1)' % (ox, oy2), _class='back')
-    t = svg.Text(y=oy2, fill='white')
-    t += svg.TSpan(lines[0], x=ox)
-    t += svg.TSpan(lines[1], x=ox, dy='-1.2em')
-    doc += t
+
+    for i, line in enumerate(reversed(lines)):
+        y = oy2 - i * 1.7 * font_size
+        doc += svg.Rect(x=0, y=0, width=size_em(len(line)), height='1em',
+                       transform='translate(%s, %s) scale(1,-1)' % (ox, y), _class='back')
+        doc += svg.Text(line, x=ox, y=y, fill='white')
 
     return str(doc)
 
