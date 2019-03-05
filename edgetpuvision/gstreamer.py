@@ -145,12 +145,15 @@ def get_video_info(filename):
     assert len(streams) == 1
     return streams[0]
 
-def is_seekable(element):
+def get_seek_element(pipeline):
+    element = pipeline.get_by_name('glsink')
+    if not element:
+        element = pipeline
     query = Gst.Query.new_seeking(Gst.Format.TIME)
     if element.query(query):
         _,  seekable, _, _ = query.parse_seeking()
-        return seekable
-    return False
+        return element
+    return None
 
 @contextlib.contextmanager
 def pull_sample(sink):
@@ -159,21 +162,22 @@ def pull_sample(sink):
 
     result, mapinfo = buf.map(Gst.MapFlags.READ)
     if result:
-        yield sample, mapinfo.data
+        yield sample, mapinfo.data, buf.pts
     buf.unmap(mapinfo)
 
 def new_sample_callback(process):
     def callback(sink, pipeline):
-        with pull_sample(sink) as (sample, data):
+        with pull_sample(sink) as (sample, data, pts):
             process(data, caps_size(sample.get_caps()))
         return Gst.FlowReturn.OK
     return callback
 
 def on_bus_message(bus, message, pipeline, loop):
     if message.type == Gst.MessageType.EOS:
-        if loop and is_seekable(pipeline):
+        seek_element = get_seek_element(pipeline)
+        if loop and seek_element:
             flags = Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT
-            if not pipeline.seek_simple(Gst.Format.TIME, flags, 0):
+            if not seek_element.seek_simple(Gst.Format.TIME, flags, 0):
                 Gtk.main_quit()
         else:
             Gtk.main_quit()
@@ -185,8 +189,13 @@ def on_bus_message(bus, message, pipeline, loop):
         sys.stderr.write('Error: %s: %s\n' % (err, debug))
         Gtk.main_quit()
 
+def on_sink_eos(sink, pipeline):
+    overlay = pipeline.get_by_name('overlay')
+    if overlay:
+        overlay.set_eos()
+
 def on_new_sample(sink, pipeline, render_overlay, layout, images, get_command):
-    with pull_sample(sink) as (sample, data):
+    with pull_sample(sink) as (sample, data, pts):
         custom_command = None
         save_frame = False
 
@@ -206,25 +215,25 @@ def on_new_sample(sink, pipeline, render_overlay, layout, images, get_command):
                              command=custom_command)
         overlay = pipeline.get_by_name('overlay')
         if overlay:
-            overlay.set_svg(svg, layout.render_size)
+            overlay.set_svg(svg, pts)
 
         if save_frame:
             images.put((data, layout.inference_size, svg))
 
     return Gst.FlowReturn.OK
 
-def run_gen(render_overlay_gen, *, source, downscale, loop, display):
+def run_gen(render_overlay_gen, *, source, loop, display):
     inference_size = render_overlay_gen.send(None)  # Initialize.
+    next(render_overlay_gen)
     return run(inference_size,
         lambda tensor, layout, command:
             render_overlay_gen.send((tensor, layout, command)),
         source=source,
-        downscale=downscale,
         loop=loop,
         display=display)
 
-def run(inference_size, render_overlay, *, source, downscale, loop, display):
-    result = get_pipeline(source, inference_size, downscale, display)
+def run(inference_size, render_overlay, *, source, loop, display):
+    result = get_pipeline(source, inference_size, display)
     if result:
         layout, pipeline = result
         run_pipeline(pipeline, layout, loop, render_overlay, display)
@@ -232,7 +241,7 @@ def run(inference_size, render_overlay, *, source, downscale, loop, display):
 
     return False
 
-def get_pipeline(source, inference_size, downscale, display):
+def get_pipeline(source, inference_size, display):
     fmt = parse_format(source)
     if fmt:
         layout = make_layout(inference_size, fmt.size)
@@ -241,7 +250,7 @@ def get_pipeline(source, inference_size, downscale, display):
     filename = os.path.expanduser(source)
     if os.path.isfile(filename):
         info = get_video_info(filename)
-        render_size = Size(info.get_width(), info.get_height()) / downscale
+        render_size = caps_size(info.get_caps())
         layout = make_layout(inference_size, render_size)
         return layout, file_pipline(info.is_image(), filename, layout, display)
 
@@ -315,7 +324,8 @@ def run_pipeline(pipeline, layout, loop, render_overlay, display, handle_sigint=
                 render_overlay=functools.partial(render_overlay, layout=layout),
                 layout=layout,
                 images=images,
-                get_command=get_command)},
+                get_command=get_command),
+             'eos' : on_sink_eos},
             **(signals or {})
         }
 

@@ -45,6 +45,8 @@ def inference_pipeline(layout, stillimage=False):
 # Display
 def image_display_pipeline(filename, layout):
     return (
+        [Filter('glvideomixer', name='mixer', background='black'),
+         display_sink(sync=False)],
         [decoded_file_src(filename),
          Tee(name='t')],
         [Pad('t'),
@@ -53,24 +55,35 @@ def image_display_pipeline(filename, layout):
          Filter('videoscale'),
          Caps('video/x-raw', format='RGBA', width=layout.render_size.width, height=layout.render_size.height),
          Filter('imagefreeze'),
-         Filter('overlayinjector', name='overlay'),
-         display_sink()],
+         Filter('glupload'),
+         Pad('mixer')],
+        [Source('overlay', name='overlay'),
+         Caps('video/x-raw', format='BGRA', width=layout.render_size.width, height=layout.render_size.height),
+         Filter('glupload'),
+         Queue(max_size_buffers=1),
+         Pad('mixer')],
         [Pad('t'),
          Queue(),
          inference_pipeline(layout, stillimage=True)],
     )
 
-def video_display_pipeline(filename, layout,):
+
+def video_display_pipeline(filename, layout):
     return (
+        [Filter('glvideomixer', name='mixer', background='black'),
+         display_sink(sync=True)],
         [decoded_file_src(filename),
          Filter('glupload'),
          Tee(name='t')],
         [Pad('t'),
+         Filter('glupload'),
+         Queue(),
+         Pad('mixer')],
+        [Source('overlay', name='overlay'),
+         Caps('video/x-raw', format='BGRA', width=layout.render_size.width, height=layout.render_size.height),
+         Filter('glupload'),
          Queue(max_size_buffers=1),
-         Filter('glfilterbin', filter='glcolorscale'),
-         Filter('overlayinjector', name='overlay'),
-         Caps('video/x-raw', width=layout.render_size.width, height=layout.render_size.height),
-         display_sink()],
+         Pad('mixer')],
         [Pad('t'),
          Queue(max_size_buffers=1, leaky='downstream'),
          inference_pipeline(layout)],
@@ -78,14 +91,20 @@ def video_display_pipeline(filename, layout,):
 
 def camera_display_pipeline(fmt, layout):
     return (
+        [Filter('glvideomixer', name='mixer', background='black'),
+         display_sink(sync=False)],
         [v4l2_src(fmt),
          Filter('glupload'),
          Tee(name='t')],
-        [Pad(name='t'),
-         Queue(max_size_buffers=1, leaky='downstream'),
-         Filter('glfilterbin', filter='glcolorscale'),
-         Filter('overlayinjector', name='overlay'),
-         display_sink()],
+        [Pad('t'),
+         Filter('glupload'),
+         Queue(),
+         Pad('mixer')],
+        [Source('overlay', name='overlay'),
+         Caps('video/x-raw', format='BGRA', width=layout.render_size.width, height=layout.render_size.height),
+         Filter('glupload'),
+         Queue(max_size_buffers=1),
+         Pad('mixer')],
         [Pad(name='t'),
          Queue(max_size_buffers=1, leaky='downstream'),
          inference_pipeline(layout)],
