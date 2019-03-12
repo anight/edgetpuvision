@@ -6,7 +6,7 @@ setup(
     description='EdgeTPU camera API',
     long_description='API to run inference on image data coming from the camera.',
     author='AIY Projects',
-    author_email='support-aiyprojects@google.com',
+    author_email='coral-support@google.com',
     url="https://aiyprojects.withgoogle.com/",
     license='Apache 2',
     packages=find_packages(),
