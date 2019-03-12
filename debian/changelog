@@ -35,13 +35,13 @@ edgetpuvision (1.3-1) mendel-beaker; urgency=medium
   * Move gstreamer pipelines into a separate file.
   * Fix problem with using JPEG images as a source.
 
- -- AIY Projects <coral-support@google.com>  Fri, 22 Feb 2019 13:56:05 -0800
+ -- Coral <coral-support@google.com>  Fri, 22 Feb 2019 13:56:05 -0800
 
 edgetpuvision (1.2-1) mendel-beaker; urgency=medium
 
   * Update command line examples and help strings.
 
- -- AIY Projects <coral-support@google.com>  Mon, 28 Jan 2019 15:01:00 -0800
+ -- Coral <coral-support@google.com>  Mon, 28 Jan 2019 15:01:00 -0800
 
 edgetpuvision (1.1-1) mendel-beaker; urgency=medium
 
@@ -53,10 +53,10 @@ edgetpuvision (1.1-1) mendel-beaker; urgency=medium
   * tpudemo script
   * Simplified API based on python generators
 
- -- AIY Projects <coral-support@google.com>  Thu, 24 Jan 2019 14:27:56 -0800
+ -- Coral <coral-support@google.com>  Thu, 24 Jan 2019 14:27:56 -0800
 
 edgetpuvision (1.0-1) unstable; urgency=low
 
   * Initial release.
 
- -- AIY Projects <coral-support@google.com>  Wed, 16 Jan 2019 21:25:55 +0000
+ -- Coral <coral-support@google.com>  Wed, 16 Jan 2019 21:25:55 +0000
