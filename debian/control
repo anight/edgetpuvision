@@ -26,7 +26,7 @@ Depends: ${misc:Depends},
          python3-numpy,
          python3-pil,
          python3-protobuf,
-         weston-imx
+         weston
 Description: EdgeTPU camera API
  API to run inference on image data coming from the camera.
 
