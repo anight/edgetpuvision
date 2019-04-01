@@ -27,7 +27,7 @@ def v4l2_src(fmt):
              framerate='%d/%d' % fmt.framerate),
     ]
 
-def display_sink(sync=False, qos=True):
+def display_sink(sync=False, qos=False):
     return Sink('glimage', sync=sync, qos=qos, name='glsink'),
 
 def h264_sink():
@@ -106,7 +106,7 @@ def video_display_pipeline(filename, layout):
 def camera_display_pipeline(fmt, layout):
     return (
         [Filter('glvideomixer', name='mixer', background='black'),
-         display_sink(sync=False, qos=False)],
+         display_sink(sync=False)],
         [v4l2_src(fmt),
          Filter('glupload'),
          Tee(name='t')],
