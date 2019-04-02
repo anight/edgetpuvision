@@ -1,8 +1,15 @@
+edgetpuvision (4-1) mendel-chef; urgency=medium
+
+  * Disable QoS for all pipelines that render to the display.
+  * Bump the changelog version for Chef build #3.
+
+ -- Coral <coral-support@google.com>  Tue, 2 Apr 2019 17:08:25 -0700
+
 edgetpuvision (3-1) mendel-chef; urgency=medium
 
   * Disable QoS events in live camera pipeline.
   * Bump the changelog version for Chef build #2.
-  
+
  -- Coral <coral-support@google.com>  Thu, 28 Mar 2019 17:08:25 -0700
 
 edgetpuvision (2-1) mendel-chef; urgency=medium
