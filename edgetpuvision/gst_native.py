@@ -151,6 +151,7 @@ class OverlaySource(GstBase.BaseSrc):
         self.cond = threading.Condition()
         self.width = 0
         self.height = 0
+        self.min_stride = 0
         self.flushing = False
         self.eos = False
         self.svg = None
@@ -200,6 +201,8 @@ class OverlaySource(GstBase.BaseSrc):
         structure = caps.get_structure(0)
         self.width = structure.get_value('width')
         self.height = structure.get_value('height')
+        self.min_stride = libcairo.cairo_format_stride_for_width(
+                int(cairo.FORMAT_ARGB32), self.width)
         return True
 
     def do_unlock(self):
@@ -251,9 +254,17 @@ class OverlaySource(GstBase.BaseSrc):
             return self.get_flow_return_locked(Gst.FlowReturn.OK)
 
     def render_svg(self, svg, buf):
+        meta = GstVideo.buffer_get_video_meta(buf)
+        if meta:
+            assert meta.n_planes == 1
+            assert meta.width == self.width
+            assert meta.height == self.height
+            assert meta.stride[0] >= self.min_stride
+            stride = meta.stride[0]
+        else:
+            stride = self.min_stride
+
         with _gst_buffer_map(buf, Gst.MapFlags.WRITE) as mapped:
-            stride = libcairo.cairo_format_stride_for_width(
-                    int(cairo.FORMAT_ARGB32), self.width)
             assert len(mapped) >= stride * self.height
 
             # Fill with transparency.
