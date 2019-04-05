@@ -7,7 +7,7 @@ setup(
     long_description='API to run inference on image data coming from the camera.',
     author='Coral',
     author_email='coral-support@google.com',
-    url="https://aiyprojects.withgoogle.com/",
+    url="https://coral.withgoogle.com/",
     license='Apache 2',
     packages=find_packages(),
     include_package_data=True,
