@@ -326,7 +326,13 @@ def run_pipeline(pipeline, layout, loop, render_overlay, display, handle_sigint=
         drawing_area.realize()
 
         glsink = pipeline.get_by_name('glsink')
-        set_display_contexts(glsink, drawing_area)
+        if os.environ.get('DISPLAY', None):
+            # X server
+            xid = drawing_area.get_window().get_xid()
+            glsink.set_window_handle(xid)
+        else:
+            # Wayland
+            set_display_contexts(glsink, drawing_area)
         drawing_area.connect('draw', on_widget_draw)
         drawing_area.connect('configure-event', on_widget_configure, glsink)
         window.connect('delete-event', Gtk.main_quit)
